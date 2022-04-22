@@ -37,6 +37,16 @@ enum paratype {
 	HL
 };
 
+static const struct {
+	char c;
+	char *escape;
+} escapes[] = {
+	{'&', "&amp;"},
+	{';', "&semi;"},
+	{'<', "&lt;"},
+	{'>', "&gt;"},
+};
+
 static int parsepara(struct linefile *infile, FILE *outfile);
 static enum paratype identifypara(char *line, char **contentret);
 
@@ -53,6 +63,16 @@ static int parahardcase(struct linefile *infile, FILE *outfile,
 static int paracodecase(struct linefile *infile, FILE *outfile,
 		char *line, char *buff,
 		char *vars, enum paratype type);
+static long strsearch(char *data, long start, size_t datalen, char c, int reps);
+/* strsearch finds instances in data with reps repetitions of c. returns the
+ * last instance in the first group. For example:
+ *
+ * c = '.', reps = 2, data = " ...", returns 2
+ * c = '.', reps = 2, data = ".. ...", returns 4
+ * c = '.', reps = 1, data = " ...", returns 3
+ * */
+static int writedata(char *data, size_t len, FILE *outfile);
+static int writesimple(char *data, size_t len, FILE *outfile);
 
 static void ungetline(struct linefile *file, char *line);
 static char *getline(struct linefile *file);
@@ -217,7 +237,7 @@ static int paraeasycase(struct linefile *infile, FILE *outfile,
 
 	fprintf(outfile, "<%s>", tag);
 	for (;;) {
-		fwrite(buff, sizeof(*buff), writelen, outfile);
+		writedata(buff, writelen, outfile);
 		free(line);
 		line = getline(infile);
 		if (line == NULL)
@@ -250,7 +270,7 @@ static int parahardcase(struct linefile *infile, FILE *outfile,
 
 		if (linetag != NULL)
 			fprintf(outfile, "<%s>", linetag);
-		fwrite(buff, sizeof(*buff), writelen, outfile);
+		writedata(buff, writelen, outfile);
 		if (islinebreak(line))
 			fputs("<br />", outfile);
 		if (linetag != NULL)
@@ -301,7 +321,7 @@ static int paracodecase(struct linefile *infile, FILE *outfile,
 		}
 
 		if (newtype != CODEBACK)
-			fputs(buff, outfile);
+			writesimple(buff, -1, outfile);
 
 		free(line);
 		line = getline(infile);
@@ -320,6 +340,113 @@ static int paracodecase(struct linefile *infile, FILE *outfile,
 
 	if (type == CODEBACK)
 		free(line);
+	return 0;
+}
+
+static long strsearch(char *data, long start, size_t datalen,
+		char c, int reps) {
+	long i;
+
+	for (i = start; data[i] == c; ++i) ;
+
+	while (i + reps - 1 < datalen) {
+		int j;
+		for (j = 0; j < reps; ++j)
+			if (data[i + j] != c)
+				goto failure;
+		goto success;
+		continue;
+failure:
+		++i;
+	}
+	return -1;
+
+success:
+	while (data[i + reps] == c && i + reps < datalen)
+		++i;
+	return i;
+}
+
+/* TODO: Finish this */
+static int writedata(char *data, size_t len, FILE *outfile) {
+	long i;
+	long start;
+	long end;
+	for (i = 0; i < len; ++i) {
+		switch (data[i]) {
+#define STANDOUT_CHAR(c) \
+		case c: \
+			if (data[i + 1] == c) { \
+				start = i + 2; \
+				end = strsearch(data, start, len, \
+						c, 2); \
+				goto bold; \
+			} \
+			start = i + 1; \
+			end = strsearch(data, start, len, c, 1); \
+			goto italic;
+		STANDOUT_CHAR('*');
+		STANDOUT_CHAR('_');
+		italic:
+			if (end < 0) {
+				putchar(data[i]);
+				break;
+			}
+			fputs("<i>", outfile);
+			writedata(data + start, end - start, outfile);
+			fputs("</i>", outfile);
+			i = end;
+			break;
+		bold:
+			if (end < 0) {
+				putchar(data[i]);
+				break;
+			}
+			fputs("<b>", outfile);
+			writedata(data + start, end - start, outfile);
+			fputs("</b>", outfile);
+			i = end + 1;
+			break;
+
+		case '`':
+			end = strsearch(data, i, len, '`', 1);
+			if (end < 0)
+				break;
+			fputs("<code>", outfile);
+			writedata(data + i, end - i, outfile);
+			fputs("</code>", outfile);
+			i = end;
+			break;
+		default: {
+			int j;
+			for (j = 0; j < sizeof escapes / sizeof *escapes; ++j) {
+				if (escapes[j].c == data[i]) {
+					fputs(escapes[j].escape, outfile);
+					goto end;
+				}
+			}
+			fputc(data[i], outfile);
+end:
+			break;
+		}
+		}
+	}
+	return 0;
+}
+
+static int writesimple(char *data, size_t len, FILE *outfile) {
+	long i;
+	for (i = 0; (len < 0 && data[i] != '\0') || i < len; ++i) {
+		int j;
+		for (j = 0; j < sizeof escapes / sizeof *escapes; ++j) {
+			if (escapes[j].c == data[i]) {
+				fputs(escapes[j].escape, outfile);
+				goto end;
+			}
+		}
+		fputc(data[i], outfile);
+end:;
+	}
 	return 0;
 }
 
