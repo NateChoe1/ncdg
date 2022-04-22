@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
 
 static void printhelp(FILE *file, char *name) {
 	fprintf(file,
-"Usage: %s -b [header] -t [template] -e [footer] -o [output]", name);
+"Usage: %s -b [header] -t [template] -e [footer] -o [output]\n", name);
 	fputs(
 "This program is free software. You can redistribute and/or modify it under\n"
 "the terms of the GNU General Public License as published by the Free\n"

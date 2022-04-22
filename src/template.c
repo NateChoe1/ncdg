@@ -37,6 +37,12 @@ enum paratype {
 	HL
 };
 
+enum inlinetype {
+	ITALIC,
+	BOLD,
+	CODE
+};
+
 static const struct {
 	char c;
 	char *escape;
@@ -71,11 +77,14 @@ static long strsearch(char *data, long start, size_t datalen, char c, int reps);
  * c = '.', reps = 2, data = ".. ...", returns 4
  * c = '.', reps = 1, data = " ...", returns 3
  * */
+static int writeescape(char c, FILE *outfile);
 static int writedata(char *data, size_t len, FILE *outfile);
 static int writesimple(char *data, size_t len, FILE *outfile);
 
 static void ungetline(struct linefile *file, char *line);
 static char *getline(struct linefile *file);
+
+static const char *escapedchars = "!\"#%&'()*,./:;?@[\\]^{|}~";
 
 int parsetemplate(FILE *infile, FILE *outfile) {
 	struct linefile realin;
@@ -143,8 +152,29 @@ static int parsepara(struct linefile *infile, FILE *outfile) {
 	}
 }
 
+static int isbreak(char *line) {
+	int count, i;
+	char whitechar;
+	count = 0;
+	whitechar = '\0';
+	for (i = 0; line[i] != '\0'; ++i) {
+		if (line[i] == line[0])
+			++count;
+		else if (line[i] == ' ' || line[i] == '\t') {
+			if (whitechar == '\0')
+				whitechar = line[i];
+			if (whitechar != line[i])
+				return 0;
+		}
+		else
+			return 0;
+	}
+	return count >= 3;
+	return 0;
+}
+
 static enum paratype identifypara(char *line, char **contentret) {
-	int i, count;
+	int i;
 	for (i = 0; i < 4; ++i) {
 		if (line[i] == ' ')
 			continue;
@@ -165,25 +195,25 @@ whitegone:
 	case '#':
 		for (i = 0; i < 6 && line[i] == '#'; ++i) ;
 		*contentret = line + i;
+		if (line[i] != '\0' && line[i] != ' ')
+			goto normal;
 		return H1 + i - 1;
 	case '>':
 		*contentret = line + 1;
 		return BLOCKQUOTE;
-	case '-':
-		count = 0;
-		for (i = 0; line[i] != '\0'; ++i) {
-			if (line[i] == '-')
-				++count;
-			if (count == 3)
-				return HL;
-		}
 	case '*':
+		if (isbreak(line))
+			return HL;
 		*contentret = line + 1;
 		return UL;
+	case '-': case '_':
+		if (isbreak(line))
+			return HL;
+		goto normal;
 	case '`':
 		for (i = 0; i < 3; ++i)
 			if (line[i] != '`')
-				return NORMAL;
+				goto normal;
 		return CODEBACK;
 	default:
 		if (isdigit(line[0])) {
@@ -193,6 +223,8 @@ whitegone:
 				return OL;
 			}
 		}
+		goto normal;
+	normal:
 		*contentret = line;
 		return NORMAL;
 	}
@@ -290,6 +322,7 @@ static int parahardcase(struct linefile *infile, FILE *outfile,
 		}
 		else
 			buff = untrail(buff);
+		fputc(' ', outfile);
 	}
 	fprintf(outfile, "</%s>", tag);
 
@@ -367,7 +400,18 @@ success:
 	return i;
 }
 
-/* TODO: Finish this */
+static int writeescape(char c, FILE *outfile) {
+	int i;
+	for (i = 0; i < sizeof escapes / sizeof *escapes; ++i) {
+		if (escapes[i].c == c) {
+			fputs(escapes[i].escape, outfile);
+			return 0;
+		}
+	}
+	fputc(c, outfile);
+	return 0;
+}
+
 static int writedata(char *data, size_t len, FILE *outfile) {
 	long i;
 	long start;
@@ -388,20 +432,16 @@ static int writedata(char *data, size_t len, FILE *outfile) {
 		STANDOUT_CHAR('*');
 		STANDOUT_CHAR('_');
 		italic:
-			if (end < 0) {
-				putchar(data[i]);
-				break;
-			}
+			if (end < 0)
+				goto normal;
 			fputs("<i>", outfile);
 			writedata(data + start, end - start, outfile);
 			fputs("</i>", outfile);
 			i = end;
 			break;
 		bold:
-			if (end < 0) {
-				putchar(data[i]);
-				break;
-			}
+			if (end < 0)
+				goto normal;
 			fputs("<b>", outfile);
 			writedata(data + start, end - start, outfile);
 			fputs("</b>", outfile);
@@ -411,24 +451,41 @@ static int writedata(char *data, size_t len, FILE *outfile) {
 		case '`':
 			end = strsearch(data, i, len, '`', 1);
 			if (end < 0)
-				break;
+				goto normal;
 			fputs("<code>", outfile);
 			writedata(data + i, end - i, outfile);
 			fputs("</code>", outfile);
 			i = end;
 			break;
-		default: {
-			int j;
-			for (j = 0; j < sizeof escapes / sizeof *escapes; ++j) {
-				if (escapes[j].c == data[i]) {
-					fputs(escapes[j].escape, outfile);
-					goto end;
-				}
-			}
-			fputc(data[i], outfile);
-end:
+		case '[': {
+			long linkend, textend;
+			textend = strsearch(data, i, len, ']', 1);
+			if (textend < 0)
+				goto normal;
+			linkend = strsearch(data, textend, len, ')', 1);
+			if (linkend < 0)
+				goto normal;
+			fputs("<a href='", outfile);
+			writesimple(data + textend + 2,
+					linkend - textend - 2, outfile);
+			fputs("'>", outfile);
+			writesimple(data + i + 1,
+					textend - i - 1, outfile);
+			fputs("</a>", outfile);
+			i = linkend;
 			break;
 		}
+		case '\\':
+			if (i == len ||
+				strchr(escapedchars, data[i+1]) == NULL) {
+				fputc('\\', outfile);
+				break;
+			}
+			++i;
+			goto normal;
+		default: normal:
+			writeescape(data[i], outfile);
+			break;
 		}
 	}
 	return 0;
@@ -437,15 +494,10 @@ end:
 static int writesimple(char *data, size_t len, FILE *outfile) {
 	long i;
 	for (i = 0; (len < 0 && data[i] != '\0') || i < len; ++i) {
-		int j;
-		for (j = 0; j < sizeof escapes / sizeof *escapes; ++j) {
-			if (escapes[j].c == data[i]) {
-				fputs(escapes[j].escape, outfile);
-				goto end;
-			}
-		}
-		fputc(data[i], outfile);
-end:;
+		if (data[i] == '\\')
+			if (strchr(escapedchars, data[i]) == NULL)
+				fputc('\\', outfile);
+		writeescape(data[i], outfile);
 	}
 	return 0;
 }
