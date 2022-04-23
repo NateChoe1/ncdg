@@ -77,6 +77,10 @@ static long strsearch(char *data, long start, size_t datalen, char c, int reps);
  * c = '.', reps = 2, data = ".. ...", returns 4
  * c = '.', reps = 1, data = " ...", returns 3
  * */
+
+static long writelinked(char *data, long i, size_t len, char *tag,
+		FILE *outfile);
+
 static int writeescape(char c, FILE *outfile);
 static int writedata(char *data, size_t len, FILE *outfile);
 static int writesimple(char *data, size_t len, FILE *outfile);
@@ -400,6 +404,38 @@ success:
 	return i;
 }
 
+static long writelinked(char *data, long i, size_t len, char *tag,
+		FILE *outfile) {
+	long linkend, textend;
+	textend = strsearch(data, i, len, ']', 1);
+	if (textend < 0)
+		return -1;
+	linkend = strsearch(data, textend, len, ')', 1);
+	if (linkend < 0)
+		return -1;
+	if (strcmp(tag, "a") == 0) {
+		fputs("<a href='", outfile);
+		writesimple(data + textend + 2,
+				linkend - textend - 2, outfile);
+		fputs("'>", outfile);
+		writesimple(data + i + 1,
+				textend - i - 1, outfile);
+		fputs("</a>", outfile);
+		return linkend;
+	}
+	else if (strcmp(tag, "img") == 0) {
+		fputs("<img src='", outfile);
+		writesimple(data + textend + 2,
+				linkend - textend - 2, outfile);
+		fputs("' alt='", outfile);
+		writesimple(data + i + 1,
+				textend - i - 1, outfile);
+		fputs("'>", outfile);
+		return linkend;
+	}
+	return -1;
+}
+
 static int writeescape(char c, FILE *outfile) {
 	int i;
 	for (i = 0; i < sizeof escapes / sizeof *escapes; ++i) {
@@ -457,24 +493,18 @@ static int writedata(char *data, size_t len, FILE *outfile) {
 			fputs("</code>", outfile);
 			i = end;
 			break;
-		case '[': {
-			long linkend, textend;
-			textend = strsearch(data, i, len, ']', 1);
-			if (textend < 0)
+		case '[':
+			end = writelinked(data, i, len, "a", outfile);
+			if (end < 0)
 				goto normal;
-			linkend = strsearch(data, textend, len, ')', 1);
-			if (linkend < 0)
-				goto normal;
-			fputs("<a href='", outfile);
-			writesimple(data + textend + 2,
-					linkend - textend - 2, outfile);
-			fputs("'>", outfile);
-			writesimple(data + i + 1,
-					textend - i - 1, outfile);
-			fputs("</a>", outfile);
-			i = linkend;
+			i = end;
 			break;
-		}
+		case '!':
+			end = writelinked(data, i + 1, len, "img", outfile);
+			if (end < 0)
+				goto normal;
+			i = end;
+			break;
 		case '\\':
 			if (i == len ||
 				strchr(escapedchars, data[i+1]) == NULL) {
