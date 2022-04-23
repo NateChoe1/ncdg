@@ -24,19 +24,22 @@
 
 static char *truncate(char *str);
 
-enum linetype identifyline(char *line, enum nodetype prev) {
+void identifyline(char *line, enum nodetype prev, struct linedata *ret) {
 	int i;
 	if (prev != PARAGRAPH) {
 		for (i = 0; i < 4; ++i) {
 			if (!isspace(line[i]))
 				goto notspacecode;
 		}
-		return SPACECODE;
+		ret->type = SPACECODE;
+		return;
 	}
 notspacecode:
 	line = truncate(line);
-	if (line[0] == '\0')
-		return EMPTY;
+	if (line[0] == '\0') {
+		ret->type = EMPTY;
+		return;
+	}
 	{
 		int hrcount;
 		if (strchr("-*_=", line[0]) == NULL)
@@ -55,11 +58,14 @@ notspacecode:
 		if (hrcount >= 3) {
 			switch (line[0]) {
 			case '=':
-				return SETEXT1;
+				ret->type = SETEXT1;
+				return;
 			case '-':
-				return SETEXT2;
+				ret->type = SETEXT2;
+				return;
 			default:
-				return HR;
+				ret->type = HR;
+				return;
 			}
 		}
 		/* There has to be at least 3 delimiter characters */
@@ -69,10 +75,23 @@ nothr:
 		if (line[i] != '`')
 			goto notfencedcode;
 	}
-	return FENCECODE;
+	ret->type = FENCECODE;
+	return;
 notfencedcode:
 
-	return PLAIN;
+	if (line[0] == '#') {
+		int pcount;
+		for (pcount = 0; line[pcount] == '#'; ++pcount) ;
+		if (line[pcount] != ' ' && line[pcount] != '\0')
+			goto notheader;
+		ret->type = HEADER;
+		ret->intensity = pcount;
+		return;
+	}
+
+notheader:
+	ret->type = PLAIN;
+	return;
 }
 /* TODO: Finish this */
 
@@ -82,14 +101,16 @@ static char *truncate(char *str) {
 	return str;
 }
 
-char *realcontent(char *line, enum linetype type) {
-	switch (type) {
+char *realcontent(char *line, struct linedata *data) {
+	switch (data->type) {
 	case EMPTY: case HR: case SETEXT1: case SETEXT2: case FENCECODE:
 		return NULL;
 	case PLAIN:
 		return line;
 	case SPACECODE:
 		return line + 4;
+	case HEADER:
+		return truncate(line + data->intensity);
 	}
 	return NULL;
 }

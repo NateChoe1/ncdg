@@ -63,12 +63,12 @@ int parsetemplate(FILE *infile, FILE *outfile) {
 }
 
 static int parseline(char *line, struct parsestate *currstate, FILE *out) {
-	enum linetype type;
+	struct linedata type;
 
-	type = identifyline(line, currstate->type);
+	identifyline(line, currstate->type, &type);
 
 	if (currstate->type == CODEBLOCK) {
-		if (type == FENCECODE) {
+		if (type.type == FENCECODE) {
 			currstate->type = NONE;
 			fputs("</code>", out);
 			return 0;
@@ -80,7 +80,7 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 		return 0;
 	}
 
-	switch (type) {
+	switch (type.type) {
 	case EMPTY:
 		endpara(currstate, out);
 		currstate->type = NONE;
@@ -115,7 +115,7 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 		}
 		else
 			appendcharstring(currstate->para, ' ');
-		appendstrstring(currstate->para, realcontent(line, type));
+		appendstrstring(currstate->para, realcontent(line, &type));
 		return 0;
 		/* According to the commonmark spec, this markdown:
 
@@ -147,7 +147,15 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 		}
 		else
 			fputs("<br>", out);
-		fputs(realcontent(line, type), out);
+		fputs(realcontent(line, &type), out);
+		break;
+	case HEADER:
+		endpara(currstate, out);
+		fprintf(out, "<h%d>%s</h%d>",
+				type.intensity,
+				realcontent(line, &type),
+				type.intensity);
+		currstate->type = NONE;
 		break;
 	}
 	return 0;

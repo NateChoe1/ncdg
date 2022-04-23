@@ -27,8 +27,14 @@ enum linetype {
 	HR,
 	SETEXT1,
 	/* === */
-	SETEXT2
+	SETEXT2,
 	/* --- */
+	HEADER
+};
+
+struct linedata {
+	enum linetype type;
+	int intensity;
 };
 
 enum nodetype {
@@ -40,8 +46,8 @@ enum nodetype {
 	NONE
 };
 
-enum linetype identifyline(char *line, enum nodetype prev);
+void identifyline(char *line, enum nodetype prev, struct linedata *ret);
 /* prev is almost never used, but sometimes it is. */
-char *realcontent(char *line, enum linetype type);
+char *realcontent(char *line, struct linedata *data);
 
 #endif
