@@ -21,506 +21,132 @@
 #include <string.h>
 
 #include <io.h>
+#include <util.h>
+#include <mdutil.h>
 #include <template.h>
 
-enum paratype {
-	NORMAL,
-	EMPTY,
-	H1, H2, H3, H4, H5, H6,
-	BLOCKQUOTE,
-	CODESPACE, CODEBACK,
-	UL, OL,
-	HL
+struct parsestate {
+	enum nodetype type;
+	struct string *para;
 };
 
-enum inlinetype {
-	ITALIC,
-	BOLD,
-	CODE
-};
-
-static const struct {
-	char c;
-	char *escape;
-} escapes[] = {
-	{'&', "&amp;"},
-	{';', "&semi;"},
-	{'<', "&lt;"},
-	{'>', "&gt;"},
-};
-
-static int parsepara(struct linefile *infile, FILE *outfile);
-static enum paratype identifypara(char *line, char **contentret);
-
-static char *untrail(char *line);
-static size_t reallen(char *line);
-static int islinebreak(char *line);
-
-static int paraeasycase(struct linefile *infile, FILE *outfile,
-		char *line, char *buff,
-		char *tag, enum paratype type);
-static int parahardcase(struct linefile *infile, FILE *outfile,
-		char *line, char *buff,
-		char *vars, char *linetag, char *tag, enum paratype type);
-static int paracodecase(struct linefile *infile, FILE *outfile,
-		char *line, char *buff,
-		char *vars, enum paratype type);
-static long strsearch(char *data, long start, size_t datalen, char c, int reps);
-/* strsearch finds instances in data with reps repetitions of c. returns the
- * last instance in the first group. For example:
- *
- * c = '.', reps = 2, data = " ...", returns 2
- * c = '.', reps = 2, data = ".. ...", returns 4
- * c = '.', reps = 1, data = " ...", returns 3
- * */
-
-static long writelinked(char *data, long i, size_t len, char *tag,
-		FILE *outfile);
-
-static int writeescape(char c, FILE *outfile);
-static int writedata(char *data, size_t len, FILE *outfile);
-static int writesimple(char *data, size_t len, FILE *outfile);
-
-static const char *escapedchars = "!\"#%&'()*,./:;?@[\\]^{|}~";
+static int parseline(char *line, struct parsestate *currstate, FILE *out);
+static int endpara(struct parsestate *state, FILE *out);
 
 int parsetemplate(FILE *infile, FILE *outfile) {
 	struct linefile *realin;
+	struct parsestate currstate;
+	int code;
+
+	currstate.type = NONE;
+	currstate.para = newstring();
+
 	realin = newlinefile(infile);
-	while (parsepara(realin, outfile) == 0) ;
+	for (;;) {
+		char *currline;
+		currline = getline(realin);
+		if (currline == NULL) {
+			code = 0;
+			break;
+		}
+		if (parseline(currline, &currstate, outfile)) {
+			code = 1;
+			break;
+		}
+	}
+	endpara(&currstate, outfile);
 	freelinefile(realin);
 
-	return 0;
+	return code;
 }
 
-static int parsepara(struct linefile *infile, FILE *outfile) {
-	for (;;) {
-		char *line, *buff;
-		/* line exists for the explicit purpose of being freed later */
-		enum paratype type;
+static int parseline(char *line, struct parsestate *currstate, FILE *out) {
+	enum linetype type;
 
-		line = getline(infile);
-		if (line == NULL)
-			return 1;
-		type = identifypara(line, &buff);
+	type = identifyline(line);
+	fflush(stdout);
 
-		buff = untrail(buff);
-
-		if (buff[0] == '\0') {
-			free(line);
-			continue;
-		}
-
-		switch (type) {
-#define EASY_CASE(enumtype, tag) \
-		case enumtype: \
-			paraeasycase(infile, outfile, line, buff, \
-					tag, enumtype); \
-			return 0;
-#define HARD_CASE(enumtype, tag, linetag, vars) \
-		case enumtype: \
-			parahardcase(infile, outfile, line, buff, \
-					vars, linetag, tag, enumtype); \
-			return 0;
-#define CODE_CASE(enumtype, vars) \
-		case enumtype: \
-			paracodecase(infile, outfile, line, buff, \
-					vars, enumtype); \
-			return 0;
-		EASY_CASE(H1, "h1");
-		EASY_CASE(H2, "h2");
-		EASY_CASE(H3, "h3");
-		EASY_CASE(H4, "h4");
-		EASY_CASE(H5, "h5");
-		EASY_CASE(H6, "h6");
-		HARD_CASE(NORMAL, "p", NULL, NULL);
-		HARD_CASE(BLOCKQUOTE, "blockquote", NULL, NULL);
-		HARD_CASE(UL, "ul", "li", NULL);
-		HARD_CASE(OL, "ol", "li", NULL);
-		CODE_CASE(CODESPACE, "class='block'");
-		CODE_CASE(CODEBACK, "class='block'");
-		case HL:
-			fputs("<hr />", outfile);
-			free(line);
-			return 0;
-		case EMPTY:
-			free(line);
-			continue;
-		}
-	}
-}
-
-static int isbreak(char *line) {
-	int count, i;
-	char whitechar;
-	count = 0;
-	whitechar = '\0';
-	for (i = 0; line[i] != '\0'; ++i) {
-		if (line[i] == line[0])
-			++count;
-		else if (line[i] == ' ' || line[i] == '\t') {
-			if (whitechar == '\0')
-				whitechar = line[i];
-			if (whitechar != line[i])
-				return 0;
-		}
-		else
-			return 0;
-	}
-	return count >= 3;
-	return 0;
-}
-
-static enum paratype identifypara(char *line, char **contentret) {
-	int i;
-	for (i = 0; i < 4; ++i) {
-		if (line[i] == ' ')
-			continue;
-		if (line[i] == '\0')
-			return EMPTY;
-		goto whitegone;
-	}
-
-	*contentret = line + i;
-	return CODESPACE;
-
-whitegone:
-	line += i;
-	/* At this point, line has no extraneous trailing whitespace */
-	switch (line[0]) {
-	case '\0':
-		return EMPTY;
-	case '#':
-		for (i = 0; i < 6 && line[i] == '#'; ++i) ;
-		*contentret = line + i;
-		if (line[i] != '\0' && line[i] != ' ')
-			goto normal;
-		return H1 + i - 1;
-	case '>':
-		*contentret = line + 1;
-		return BLOCKQUOTE;
-	case '*':
-		if (isbreak(line))
-			return HL;
-		*contentret = line + 1;
-		return UL;
-	case '-': case '_':
-		if (isbreak(line))
-			return HL;
-		goto normal;
-	case '`':
-		for (i = 0; i < 3; ++i)
-			if (line[i] != '`')
-				goto normal;
-		return CODEBACK;
-	default:
-		if (isdigit(line[0])) {
-			for (i = 0; isdigit(line[i]); ++i) ;
-			if (line[i] == '.' || line[i] == ')') {
-				*contentret = line + i + 1;
-				return OL;
-			}
-		}
-		goto normal;
-	normal:
-		*contentret = line;
-		return NORMAL;
-	}
-}
-
-static char *untrail(char *line) {
-	while (isspace(line[0]))
-		++line;
-	return line;
-}
-
-static size_t reallen(char *line) {
-	size_t fakelen;
-	fakelen = strlen(line);
-	if (line[fakelen - 1] == '\\')
-		--fakelen;
-	while (isspace(line[fakelen]))
-		--fakelen;
-	return fakelen;
-}
-
-static int islinebreak(char *line) {
-	size_t len;
-	int i;
-	len = strlen(line);
-	if (line[len - 1] == '\\')
-		return 1;
-	if (len < 2)
+	switch (type) {
+	case EMPTY:
+		endpara(currstate, out);
+		currstate->type = NONE;
 		return 0;
-	for (i = 0; i < 2; ++i)
-		if (!isspace(line[len - i - 1]))
-			return 0;
-	return 1;
-}
-
-static int paraeasycase(struct linefile *infile, FILE *outfile,
-		char *line, char *buff,
-		char *tag, enum paratype type) {
-	size_t writelen;
-
-	writelen = reallen(buff);
-
-	fprintf(outfile, "<%s>", tag);
-	for (;;) {
-		writedata(buff, writelen, outfile);
-		free(line);
-		line = getline(infile);
-		if (line == NULL)
-			break;
-		if (identifypara(line, &buff) != type) {
-			ungetline(infile, line);
-			line = NULL;
-			break;
-		}
-		else
-			buff = untrail(buff);
-	}
-	fprintf(outfile, "</%s>", tag);
-
-	free(line);
-	return 0;
-}
-
-static int parahardcase(struct linefile *infile, FILE *outfile,
-		char *line, char *buff,
-		char *vars, char *linetag, char *tag, enum paratype type) {
-	size_t writelen;
-
-	if (vars == NULL)
-		fprintf(outfile, "<%s>", tag);
-	else
-		fprintf(outfile, "<%s %s>", tag, vars);
-	for (;;) {
-		writelen = reallen(buff);
-
-		if (linetag != NULL)
-			fprintf(outfile, "<%s>", linetag);
-		writedata(buff, writelen, outfile);
-		if (islinebreak(line))
-			fputs("<br />", outfile);
-		if (linetag != NULL)
-			fprintf(outfile, "</%s>", linetag);
-
-		free(line);
-		line = getline(infile);
-		if (line == NULL)
-			break;
-		if (identifypara(line, &buff) != type) {
-			buff = untrail(line);
-			if (buff[0] == '\0') {
-				free(line);
-				line = NULL;
-				break;
-			}
-		}
-		else
-			buff = untrail(buff);
-		fputc(' ', outfile);
-	}
-	fprintf(outfile, "</%s>", tag);
-
-	free(line);
-	return 0;
-}
-
-static int paracodecase(struct linefile *infile, FILE *outfile,
-		char *line, char *buff,
-		char *vars, enum paratype type) {
-	int seenfirst;
-	enum paratype newtype;
-
-	if (type != CODESPACE && type != CODEBACK)
-		return 1;
-
-	if (vars == NULL)
-		fputs("<code>", outfile);
-	else
-		fprintf(outfile, "<code %s>", vars);
-	seenfirst = 0;
-	newtype = type;
-	for (;;) {
-		if ((type == CODEBACK && type != newtype) ||
-		     newtype == CODESPACE) {
-			if (seenfirst)
-				fputs("<br />", outfile);
-			seenfirst = 1;
-		}
-
-		if (newtype != CODEBACK)
-			writesimple(buff, -1, outfile);
-
-		free(line);
-		line = getline(infile);
-		if (line == NULL)
+	case SETEXT1:
+		if (currstate->type != PARAGRAPH)
 			return 1;
-
-		newtype = identifypara(line, &buff);
-		if (type == CODEBACK && newtype == CODEBACK)
-			break;
-		if (type == CODESPACE && newtype != type) {
-			ungetline(infile, line);
-			break;
+		currstate->type = NONE;
+		fputs("<h1>", out);
+		fwrite(currstate->para->data, 1, currstate->para->len, out);
+		fputs("</h1>", out);
+		resetstring(currstate->para);
+		return 0;
+	case SETEXT2:
+		if (currstate->type != PARAGRAPH)
+			goto hr;
+		currstate->type = NONE;
+		fputs("<h2>", out);
+		fwrite(currstate->para->data, 1, currstate->para->len, out);
+		fputs("</h2>", out);
+		resetstring(currstate->para);
+		return 0;
+	case HR: hr:
+		endpara(currstate, out);
+		currstate->type = NONE;
+		fputs("<hr>", out);
+		return 0;
+	case PLAIN:
+		if (currstate->type != PARAGRAPH) {
+			endpara(currstate, out);
+			currstate->type = PARAGRAPH;
 		}
-	}
-	fputs("</code>", outfile);
+		else
+			appendcharstring(currstate->para, ' ');
+		appendstrstring(currstate->para, realcontent(line, type));
+		return 0;
+		/* According to the commonmark spec, this markdown:
 
-	if (type == CODEBACK)
-		free(line);
-	return 0;
-}
+		Chapter 1
+		---
 
-static long strsearch(char *data, long start, size_t datalen,
-		char c, int reps) {
-	long i;
+		 * Should NOT compile to this:
 
-	for (i = start; data[i] == c; ++i) ;
+		<p>Chapter 1</p><hr>
 
-	while (i + reps - 1 < datalen) {
-		int j;
-		for (j = 0; j < reps; ++j)
-			if (data[i + j] != c)
-				goto failure;
-		goto success;
-		continue;
-failure:
-		++i;
-	}
-	return -1;
+		 * but rather to this
 
-success:
-	while (data[i + reps] == c && i + reps < datalen)
-		++i;
-	return i;
-}
+		<h2>Chapter 1</h2>
 
-static long writelinked(char *data, long i, size_t len, char *tag,
-		FILE *outfile) {
-	long linkend, textend;
-	textend = strsearch(data, i, len, ']', 1);
-	if (textend < 0)
-		return -1;
-	linkend = strsearch(data, textend, len, ')', 1);
-	if (linkend < 0)
-		return -1;
-	if (strcmp(tag, "a") == 0) {
-		fputs("<a href='", outfile);
-		writesimple(data + textend + 2,
-				linkend - textend - 2, outfile);
-		fputs("'>", outfile);
-		writesimple(data + i + 1,
-				textend - i - 1, outfile);
-		fputs("</a>", outfile);
-		return linkend;
-	}
-	else if (strcmp(tag, "img") == 0) {
-		fputs("<img src='", outfile);
-		writesimple(data + textend + 2,
-				linkend - textend - 2, outfile);
-		fputs("' alt='", outfile);
-		writesimple(data + i + 1,
-				textend - i - 1, outfile);
-		fputs("'>", outfile);
-		return linkend;
-	}
-	return -1;
-}
-
-static int writeescape(char c, FILE *outfile) {
-	int i;
-	for (i = 0; i < sizeof escapes / sizeof *escapes; ++i) {
-		if (escapes[i].c == c) {
-			fputs(escapes[i].escape, outfile);
-			return 0;
+		 * This means that we need to store the contents of the
+		 * paragraph and only write after obtaining the whole thing
+		 * as to not include the wrong tags.
+		 * */
+	case SPACECODE:
+		if (currstate->type != CODE) {
+			endpara(currstate, out);
+			currstate->type = CODE;
+			fputs("<code class='block'>", out);
 		}
-	}
-	fputc(c, outfile);
-	return 0;
-}
-
-static int writedata(char *data, size_t len, FILE *outfile) {
-	long i;
-	long start;
-	long end;
-	for (i = 0; i < len; ++i) {
-		switch (data[i]) {
-#define STANDOUT_CHAR(c) \
-		case c: \
-			if (data[i + 1] == c) { \
-				start = i + 2; \
-				end = strsearch(data, start, len, \
-						c, 2); \
-				goto bold; \
-			} \
-			start = i + 1; \
-			end = strsearch(data, start, len, c, 1); \
-			goto italic;
-		STANDOUT_CHAR('*');
-		STANDOUT_CHAR('_');
-		italic:
-			if (end < 0)
-				goto normal;
-			fputs("<i>", outfile);
-			writedata(data + start, end - start, outfile);
-			fputs("</i>", outfile);
-			i = end;
-			break;
-		bold:
-			if (end < 0)
-				goto normal;
-			fputs("<b>", outfile);
-			writedata(data + start, end - start, outfile);
-			fputs("</b>", outfile);
-			i = end + 1;
-			break;
-
-		case '`':
-			end = strsearch(data, i, len, '`', 1);
-			if (end < 0)
-				goto normal;
-			fputs("<code>", outfile);
-			writedata(data + i, end - i, outfile);
-			fputs("</code>", outfile);
-			i = end;
-			break;
-		case '[':
-			end = writelinked(data, i, len, "a", outfile);
-			if (end < 0)
-				goto normal;
-			i = end;
-			break;
-		case '!':
-			end = writelinked(data, i + 1, len, "img", outfile);
-			if (end < 0)
-				goto normal;
-			i = end;
-			break;
-		case '\\':
-			if (i == len ||
-				strchr(escapedchars, data[i+1]) == NULL) {
-				fputc('\\', outfile);
-				break;
-			}
-			++i;
-			goto normal;
-		default: normal:
-			writeescape(data[i], outfile);
-			break;
-		}
+		else
+			fputs("<br>", out);
+		fputs(realcontent(line, type), out);
+		break;
 	}
 	return 0;
 }
 
-static int writesimple(char *data, size_t len, FILE *outfile) {
-	long i;
-	for (i = 0; (len < 0 && data[i] != '\0') || i < len; ++i) {
-		if (data[i] == '\\')
-			if (strchr(escapedchars, data[i]) == NULL)
-				fputc('\\', outfile);
-		writeescape(data[i], outfile);
+static int endpara(struct parsestate *state, FILE *out) {
+	switch (state->type) {
+	case PARAGRAPH:
+		fputs("<p>", out);
+		fwrite(state->para->data, 1, state->para->len, out);
+		fputs("</p>", out);
+		resetstring(state->para);
+		return 0;
+	case CODE:
+		fputs("</code>", out);
+		return 0;
+	case NONE:
+		return 0;
 	}
-	return 0;
+	return 1;
 }

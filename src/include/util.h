@@ -15,20 +15,21 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+#ifndef HAVE_UTIL
+#define HAVE_UTIL
 
-#ifndef HAVE_IO
-#define HAVE_IO
+#include <stddef.h>
 
-#include <stdio.h>
-
-struct linefile {
-	char *prevline;
-	FILE *file;
+struct string {
+	size_t len;
+	size_t alloc;
+	char *data;
 };
 
-void ungetline(struct linefile *file, char *line);
-char *getline(struct linefile *file);
-struct linefile *newlinefile(FILE *file);
-void freelinefile(struct linefile *file);
+struct string *newstring();
+void freestring(struct string *str);
+int appendcharstring(struct string *str, char c);
+int appendstrstring(struct string *str, char *s);
+void resetstring(struct string *str);
 
 #endif

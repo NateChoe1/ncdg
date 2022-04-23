@@ -16,19 +16,27 @@
    along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef HAVE_IO
-#define HAVE_IO
+#ifndef HAVE_MDUTIL
+#define HAVE_MDUTIL
 
-#include <stdio.h>
-
-struct linefile {
-	char *prevline;
-	FILE *file;
+enum linetype {
+	EMPTY,
+	PLAIN,
+	SPACECODE,
+	HR,
+	SETEXT1,
+	/* === */
+	SETEXT2
+	/* --- */
 };
 
-void ungetline(struct linefile *file, char *line);
-char *getline(struct linefile *file);
-struct linefile *newlinefile(FILE *file);
-void freelinefile(struct linefile *file);
+enum nodetype {
+	PARAGRAPH,
+	CODE,
+	NONE
+};
+
+enum linetype identifyline(char *line);
+char *realcontent(char *line, enum linetype type);
 
 #endif
