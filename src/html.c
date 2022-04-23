@@ -32,13 +32,13 @@ int copyhtml(FILE *in, FILE *out) {
 		addspace = 0;
 		c = fgetc(in);
 		if (c == EOF)
-			return 0;
+			goto end;
 		if (isspace(c)) {
 			addspace = 1;
 			while (isspace(c)) {
 				c = fgetc(in);
 				if (c == EOF)
-					return 0;
+					goto end;
 			}
 		}
 		if (c == '<' || c == '>') {
@@ -52,5 +52,7 @@ int copyhtml(FILE *in, FILE *out) {
 			fputc(c, out);
 		}
 	}
+end:
+	fclose(in);
 	return 0;
 }

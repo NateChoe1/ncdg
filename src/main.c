@@ -67,14 +67,12 @@ int main(int argc, char **argv) {
 			fputs("Failed to copy header\n", stderr);
 			return 1;
 		}
-		fclose(headerfile);
 	}
 	if (template != NULL) {
 		FILE *templatefile;
 		templatefile = fopen(template, "r");
 		if (parsetemplate(templatefile, outfile))
 			return 1;
-		fclose(templatefile);
 	}
 	if (footer != NULL) {
 		FILE *footerfile;
@@ -83,7 +81,6 @@ int main(int argc, char **argv) {
 			fputs("Failed to copy footer\n", stderr);
 			return 1;
 		}
-		fclose(footerfile);
 	}
 	if (outfile != stdout)
 		fclose(outfile);
