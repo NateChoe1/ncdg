@@ -20,12 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <io.h>
 #include <template.h>
-
-struct linefile {
-	char *prevline;
-	FILE *file;
-};
 
 enum paratype {
 	NORMAL,
@@ -85,16 +81,13 @@ static int writeescape(char c, FILE *outfile);
 static int writedata(char *data, size_t len, FILE *outfile);
 static int writesimple(char *data, size_t len, FILE *outfile);
 
-static void ungetline(struct linefile *file, char *line);
-static char *getline(struct linefile *file);
-
 static const char *escapedchars = "!\"#%&'()*,./:;?@[\\]^{|}~";
 
 int parsetemplate(FILE *infile, FILE *outfile) {
-	struct linefile realin;
-	realin.prevline = NULL;
-	realin.file = infile;
-	while (parsepara(&realin, outfile) == 0) ;
+	struct linefile *realin;
+	realin = newlinefile(infile);
+	while (parsepara(realin, outfile) == 0) ;
+	freelinefile(realin);
 
 	return 0;
 }
@@ -530,51 +523,4 @@ static int writesimple(char *data, size_t len, FILE *outfile) {
 		writeescape(data[i], outfile);
 	}
 	return 0;
-}
-
-static void ungetline(struct linefile *file, char *line) {
-	file->prevline = line;
-}
-
-static char *getline(struct linefile *file) {
-	size_t alloc;
-	size_t len;
-	char *ret;
-	int c;
-
-	if (file->prevline != NULL) {
-		ret = file->prevline;
-		file->prevline = NULL;
-		return ret;
-	}
-
-	c = fgetc(file->file);
-	if (c == EOF)
-		return NULL;
-	ungetc(c, file->file);
-
-	alloc = 80;
-	len = 0;
-	ret = malloc(alloc);
-	if (ret == NULL)
-		return NULL;
-
-	for (;;) {
-		if (len >= alloc) {
-			char *newret;
-			alloc *= 2;
-			newret = realloc(ret, alloc);
-			if (newret == NULL) {
-				free(ret);
-				return NULL;
-			}
-			ret = newret;
-		}
-		c = fgetc(file->file);
-		if (c == '\n') {
-			ret[len] = '\0';
-			return ret;
-		}
-		ret[len++] = c;
-	}
 }
