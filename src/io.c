@@ -39,11 +39,11 @@ char *getline(struct linefile *file) {
 			return ret;
 		}
 		if (c == '\t') {
-			while (len % 4 != 0) {
+			do {
 				ret = append(ret, ' ', &len, &alloc);
 				if (ret == NULL)
 					return NULL;
-			}
+			} while (len % 4 != 0);
 		}
 		else {
 			ret = append(ret, c, &len, &alloc);

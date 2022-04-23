@@ -29,6 +29,7 @@ int main(int argc, char **argv) {
 	char *header, *template, *footer, *out;
 	FILE *outfile;
 	int c;
+	const char *filefailmsg = "Failed to open file %s\n";
 
 	header = template = footer = out = NULL;
 
@@ -63,22 +64,40 @@ int main(int argc, char **argv) {
 	if (header != NULL) {
 		FILE *headerfile;
 		headerfile = fopen(header, "r");
-		if (copyhtml(headerfile, outfile)) {
-			fputs("Failed to copy header\n", stderr);
+		if (headerfile != NULL) {
+			if (copyhtml(headerfile, outfile)) {
+				fputs(filefailmsg, stderr);
+				return 1;
+			}
+		}
+		else {
+			fprintf(stderr, filefailmsg, header);
 			return 1;
 		}
 	}
 	if (template != NULL) {
 		FILE *templatefile;
 		templatefile = fopen(template, "r");
-		if (parsetemplate(templatefile, outfile))
+		if (templatefile != NULL) {
+			if (parsetemplate(templatefile, outfile))
+				return 1;
+		}
+		else {
+			fprintf(stderr, filefailmsg, template);
 			return 1;
+		}
 	}
 	if (footer != NULL) {
 		FILE *footerfile;
 		footerfile = fopen(footer, "r");
-		if (copyhtml(footerfile, outfile)) {
-			fputs("Failed to copy footer\n", stderr);
+		if (footerfile != NULL) {
+			if (copyhtml(footerfile, outfile)) {
+				fputs("Failed to copy footer\n", stderr);
+				return 1;
+			}
+		}
+		else {
+			fprintf(stderr, filefailmsg, footer);
 			return 1;
 		}
 	}

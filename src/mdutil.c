@@ -24,14 +24,16 @@
 
 static char *truncate(char *str);
 
-enum linetype identifyline(char *line) {
+enum linetype identifyline(char *line, enum nodetype prev) {
 	int i;
-	for (i = 0; i < 4; ++i) {
-		if (!isspace(line[i]))
-			goto notcode;
+	if (prev != PARAGRAPH) {
+		for (i = 0; i < 4; ++i) {
+			if (!isspace(line[i]))
+				goto notspacecode;
+		}
+		return SPACECODE;
 	}
-	return SPACECODE;
-notcode:
+notspacecode:
 	line = truncate(line);
 	if (line[0] == '\0')
 		return EMPTY;
@@ -63,6 +65,13 @@ notcode:
 		/* There has to be at least 3 delimiter characters */
 	}
 nothr:
+	for (i = 0; i < 3; ++i) {
+		if (line[i] != '`')
+			goto notfencedcode;
+	}
+	return FENCECODE;
+notfencedcode:
+
 	return PLAIN;
 }
 /* TODO: Finish this */
@@ -75,7 +84,7 @@ static char *truncate(char *str) {
 
 char *realcontent(char *line, enum linetype type) {
 	switch (type) {
-	case EMPTY: case HR: case SETEXT1: case SETEXT2:
+	case EMPTY: case HR: case SETEXT1: case SETEXT2: case FENCECODE:
 		return NULL;
 	case PLAIN:
 		return line;

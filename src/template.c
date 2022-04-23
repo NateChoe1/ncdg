@@ -28,6 +28,8 @@
 struct parsestate {
 	enum nodetype type;
 	struct string *para;
+	int isfirst;
+	/* Used to insert <br> tags. Currently onlu used for FENCECODE. */
 };
 
 static int parseline(char *line, struct parsestate *currstate, FILE *out);
@@ -63,8 +65,20 @@ int parsetemplate(FILE *infile, FILE *outfile) {
 static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 	enum linetype type;
 
-	type = identifyline(line);
-	fflush(stdout);
+	type = identifyline(line, currstate->type);
+
+	if (currstate->type == CODEBLOCK) {
+		if (type == FENCECODE) {
+			currstate->type = NONE;
+			fputs("</code>", out);
+			return 0;
+		}
+		if (!currstate->isfirst)
+			fputs("<br>", out);
+		fputs(line, out);
+		currstate->isfirst = 0;
+		return 0;
+	}
 
 	switch (type) {
 	case EMPTY:
@@ -120,6 +134,11 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 		 * paragraph and only write after obtaining the whole thing
 		 * as to not include the wrong tags.
 		 * */
+	case FENCECODE:
+		fputs("<code class='block'>", out);
+		currstate->type = CODEBLOCK;
+		currstate->isfirst = 1;
+		break;
 	case SPACECODE:
 		if (currstate->type != CODE) {
 			endpara(currstate, out);
@@ -142,7 +161,7 @@ static int endpara(struct parsestate *state, FILE *out) {
 		fputs("</p>", out);
 		resetstring(state->para);
 		return 0;
-	case CODE:
+	case CODE: case CODEBLOCK:
 		fputs("</code>", out);
 		return 0;
 	case NONE:

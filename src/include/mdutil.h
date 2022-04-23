@@ -23,6 +23,7 @@ enum linetype {
 	EMPTY,
 	PLAIN,
 	SPACECODE,
+	FENCECODE,
 	HR,
 	SETEXT1,
 	/* === */
@@ -33,10 +34,14 @@ enum linetype {
 enum nodetype {
 	PARAGRAPH,
 	CODE,
+	/* Used for code that starts with spaces */
+	CODEBLOCK,
+	/* Used for triple backtick code */
 	NONE
 };
 
-enum linetype identifyline(char *line);
+enum linetype identifyline(char *line, enum nodetype prev);
+/* prev is almost never used, but sometimes it is. */
 char *realcontent(char *line, enum linetype type);
 
 #endif
