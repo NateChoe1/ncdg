@@ -106,8 +106,11 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 	case SKELETON:
 		handlehtmlmiddle(&type, currstate, line, out);
 		return 0;
+	case GENERICTAG:
+		handlehtmlmiddle(&type, currstate, line, out);
+		return 0;
 	case EMPTY: case PLAIN: case SPACECODE: case HR:
-	case SETEXT1: case SETEXT2: case HEADER: case GENERICTAG:
+	case SETEXT1: case SETEXT2: case HEADER:
 		break;
 	}
 
