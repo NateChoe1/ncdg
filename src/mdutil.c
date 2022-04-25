@@ -125,6 +125,7 @@ notheader:
 
 	if (line[0] == '<') {
 		char *testline;
+		int isopen;
 		testline = line + 1;
 		for (i = 0; i < LEN(concretetags); ++i) {
 			char *aftertag;
@@ -137,8 +138,12 @@ notheader:
 				return;
 			}
 		}
-		if (testline[0] == '/')
+		if (testline[0] == '/') {
 			++testline;
+			isopen = 0;
+		}
+		else
+			isopen = 1;
 		for (i = 0; i < LEN(skeletontags); ++i) {
 			char *aftertag;
 			aftertag = after(skeletontags[i], testline);
@@ -152,7 +157,72 @@ notheader:
 				return;
 			}
 		}
+
+		/* < || </ */
+
+		if (!isalpha(testline[0]))
+			goto nothtml;
+		++testline;
+		while (isalnum(testline[0]) || testline[0] == '-')
+			++testline;
+
+		/* <[tag name] || </[tag name] */
+
+		for (;;) {
+			char *newtestline;
+			newtestline = truncate(testline);
+
+			if (!isalpha(newtestline[0]) &&
+					strchr("_:", newtestline[0]) == NULL)
+				break;
+			++newtestline;
+			while (isalnum(newtestline[0]) ||
+					strchr("_.:-", newtestline[0]) != NULL)
+				++newtestline;
+			/* Swallow attribute name */
+
+			newtestline = truncate(newtestline);
+			if (newtestline[0] == '=') {
+				char start;
+				++newtestline;
+				newtestline = truncate(newtestline);
+				start = newtestline[0];
+				switch (start) {
+				case '\'': case '"':
+					while (newtestline[0] != start &&
+							newtestline[0] != '\0')
+						++newtestline;
+					if (newtestline[0] == '\0')
+						goto nothtml;
+					break;
+				/* Swallow single/double quoted attribute
+				 * value */
+				default:
+					while (strchr("\"'=<>`", newtestline[0])
+							== NULL &&
+							newtestline[0] != '\0')
+						++newtestline;
+					if (newtestline[0] == '\0')
+						goto nothtml;
+					break;
+				/* Swallow unquoted attribute value */
+				}
+			}
+			/* Swallow attribute value */
+
+			testline = newtestline;
+		}
+		
+		/* <[tag name][attribute]* || </tag name][attribute]* */
+		if (isopen && testline[0] == '/')
+			++testline;
+		if (testline[0] == '>') {
+			ret->type = GENERICTAG;
+			ret->data.isfirst = 1;
+			return;
+		}
 	}
+nothtml:
 
 	ret->type = PLAIN;
 	return;
