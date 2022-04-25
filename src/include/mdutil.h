@@ -29,24 +29,29 @@ enum linetype {
 	/* === */
 	SETEXT2,
 	/* --- */
-	HEADER
+	HEADER,
+
+	HTMLCONCRETE,
+	COMMENTLONG,
+	PHP,
+	COMMENTSHORT,
+	CDATA,
+	SKELETON,
+	GENERICTAG
 };
+
+#define HTMLSTART HTMLCONCRETE
+#define HTMLEND GENERICTAG
 
 struct linedata {
 	enum linetype type;
-	int intensity;
+	union {
+		int intensity;
+		int isfirst;
+	} data;
 };
 
-enum nodetype {
-	PARAGRAPH,
-	CODE,
-	/* Used for code that starts with spaces */
-	CODEBLOCK,
-	/* Used for triple backtick code */
-	NONE
-};
-
-void identifyline(char *line, enum nodetype prev, struct linedata *ret);
+void identifyline(char *line, struct linedata *prev, struct linedata *ret);
 /* prev is almost never used, but sometimes it is. */
 char *realcontent(char *line, struct linedata *data);
 

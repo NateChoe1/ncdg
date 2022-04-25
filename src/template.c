@@ -26,21 +26,28 @@
 #include <template.h>
 
 struct parsestate {
-	enum nodetype type;
+	struct linedata prev;
 	struct string *para;
+
 	int isfirst;
-	/* Used to insert <br> tags. Currently onlu used for FENCECODE. */
+	int intensity;
+	/* Similar to the intensity field in the linedata struct. Currently
+	 * stores the number of backticks used in FENCECODE.*/
 };
 
 static int parseline(char *line, struct parsestate *currstate, FILE *out);
 static int endpara(struct parsestate *state, FILE *out);
+static void handlehtmlcase(struct linedata *data, struct parsestate *state,
+		char *line, FILE *out);
+static void handlehtmlmiddle(struct linedata *data, struct parsestate *state,
+		char *line, FILE *out);
 
 int parsetemplate(FILE *infile, FILE *outfile) {
 	struct linefile *realin;
 	struct parsestate currstate;
 	int code;
 
-	currstate.type = NONE;
+	currstate.prev.type = EMPTY;
 	currstate.para = newstring();
 
 	realin = newlinefile(infile);
@@ -65,11 +72,14 @@ int parsetemplate(FILE *infile, FILE *outfile) {
 static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 	struct linedata type;
 
-	identifyline(line, currstate->type, &type);
+	identifyline(line, &currstate->prev, &type);
 
-	if (currstate->type == CODEBLOCK) {
-		if (type.type == FENCECODE) {
-			currstate->type = NONE;
+	switch (currstate->prev.type) {
+	case FENCECODE:
+		if (type.type == FENCECODE &&
+				type.data.intensity >=
+				currstate->intensity) {
+			currstate->prev.type = EMPTY;
 			fputs("</code>", out);
 			return 0;
 		}
@@ -78,45 +88,66 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 		fputs(line, out);
 		currstate->isfirst = 0;
 		return 0;
+	case HTMLCONCRETE:
+		handlehtmlmiddle(&type, currstate, line, out);
+		return 0;
+	case COMMENTLONG:
+		handlehtmlmiddle(&type, currstate, line, out);
+		return 0;
+	case PHP:
+		handlehtmlmiddle(&type, currstate, line, out);
+		return 0;
+	case COMMENTSHORT:
+		handlehtmlmiddle(&type, currstate, line, out);
+		return 0;
+	case CDATA:
+		handlehtmlmiddle(&type, currstate, line, out);
+		return 0;
+	case SKELETON:
+		handlehtmlmiddle(&type, currstate, line, out);
+		return 0;
+	case EMPTY: case PLAIN: case SPACECODE: case HR:
+	case SETEXT1: case SETEXT2: case HEADER: case GENERICTAG:
+		break;
 	}
 
 	switch (type.type) {
 	case EMPTY:
 		endpara(currstate, out);
-		currstate->type = NONE;
-		return 0;
+		currstate->prev.type = EMPTY;
+		break;
 	case SETEXT1:
-		if (currstate->type != PARAGRAPH)
+		if (currstate->prev.type != PLAIN)
 			return 1;
-		currstate->type = NONE;
+		currstate->prev.type = EMPTY;
 		fputs("<h1>", out);
 		fwrite(currstate->para->data, 1, currstate->para->len, out);
 		fputs("</h1>", out);
 		resetstring(currstate->para);
-		return 0;
+		break;
 	case SETEXT2:
-		if (currstate->type != PARAGRAPH)
+		if (currstate->prev.type != PLAIN)
 			goto hr;
-		currstate->type = NONE;
+		currstate->prev.type = EMPTY;
 		fputs("<h2>", out);
 		fwrite(currstate->para->data, 1, currstate->para->len, out);
 		fputs("</h2>", out);
 		resetstring(currstate->para);
-		return 0;
+		break;
 	case HR: hr:
 		endpara(currstate, out);
-		currstate->type = NONE;
+		currstate->prev.type = EMPTY;
 		fputs("<hr>", out);
-		return 0;
+		break;
 	case PLAIN:
-		if (currstate->type != PARAGRAPH) {
+		if (currstate->prev.type != PLAIN) {
 			endpara(currstate, out);
-			currstate->type = PARAGRAPH;
+			currstate->prev.type = PLAIN;
 		}
 		else
 			appendcharstring(currstate->para, ' ');
 		appendstrstring(currstate->para, realcontent(line, &type));
-		return 0;
+		break;
 		/* According to the commonmark spec, this markdown:
 
 		Chapter 1
@@ -136,13 +167,14 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 		 * */
 	case FENCECODE:
 		fputs("<code class='block'>", out);
-		currstate->type = CODEBLOCK;
+		currstate->prev.type = FENCECODE;
 		currstate->isfirst = 1;
+		currstate->intensity = type.data.intensity;
 		break;
 	case SPACECODE:
-		if (currstate->type != CODE) {
+		if (currstate->prev.type != SPACECODE) {
 			endpara(currstate, out);
-			currstate->type = CODE;
+			currstate->prev.type = SPACECODE;
 			fputs("<code class='block'>", out);
 		}
 		else
@@ -152,28 +184,78 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 	case HEADER:
 		endpara(currstate, out);
 		fprintf(out, "<h%d>%s</h%d>",
-				type.intensity,
+				type.data.intensity,
 				realcontent(line, &type),
-				type.intensity);
-		currstate->type = NONE;
+				type.data.intensity);
+		currstate->prev.type = EMPTY;
+		break;
+	case HTMLCONCRETE:
+		handlehtmlcase(&type, currstate, line, out);
+		break;
+	case COMMENTLONG:
+		handlehtmlcase(&type, currstate, line, out);
+		break;
+	case PHP:
+		handlehtmlcase(&type, currstate, line, out);
+		break;
+	case COMMENTSHORT:
+		handlehtmlcase(&type, currstate, line, out);
+		break;
+	case CDATA:
+		handlehtmlcase(&type, currstate, line, out);
+		break;
+	case SKELETON:
+		handlehtmlcase(&type, currstate, line, out);
+		break;
+	case GENERICTAG:
+		handlehtmlcase(&type, currstate, line, out);
 		break;
 	}
 	return 0;
 }
 
 static int endpara(struct parsestate *state, FILE *out) {
-	switch (state->type) {
-	case PARAGRAPH:
+	switch (state->prev.type) {
+	case EMPTY: case HR:
+	case HTMLCONCRETE: case COMMENTLONG: case PHP: case COMMENTSHORT:
+	case CDATA: case SKELETON: case GENERICTAG:
+		return 0;
+	case PLAIN:
 		fputs("<p>", out);
 		fwrite(state->para->data, 1, state->para->len, out);
 		fputs("</p>", out);
 		resetstring(state->para);
 		return 0;
-	case CODE: case CODEBLOCK:
+	case SPACECODE: case FENCECODE:
 		fputs("</code>", out);
 		return 0;
-	case NONE:
+	case HEADER:
+		fprintf(out, "</h%d>", state->prev.data.intensity);
 		return 0;
+	case SETEXT1:
+		fputs("</h1>", out);
+		break;
+	case SETEXT2:
+		fputs("</h2>", out);
+		break;
 	}
 	return 1;
+}
+
+static void handlehtmlcase(struct linedata *data, struct parsestate *state,
+		char *line, FILE *out) {
+	endpara(state, out);
+	fputs(line, out);
+	fputc('\n', out);
+	state->prev.type = data->type;
+}
+
+static void handlehtmlmiddle(struct linedata *data, struct parsestate *state,
+		char *line, FILE *out) {
+	if (state->prev.type == data->type && !data->data.isfirst) {
+		state->prev.type = EMPTY;
+		return;
+	}
+	fputs(line, out);
+	fputc('\n', out);
 }

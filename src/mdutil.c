@@ -17,16 +17,35 @@
  */
 
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
-#include <stddef.h>
 
+#include <util.h>
 #include <mdutil.h>
 
 static char *truncate(char *str);
+static char *after(char *begin, char *str);
+static void identifyend(char *line, enum linetype prev, struct linedata *ret);
 
-void identifyline(char *line, enum nodetype prev, struct linedata *ret) {
+static char *concretetags[] = { "pre", "script", "style", "textarea" };
+static char *skeletontags[] = {
+	"address", "article", "aside", "base", "basefont", "blockquote", "body",
+	"caption", "center", "col", "colgroup", "dd", "details", "dialog",
+	"dir", "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer",
+	"form", "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head",
+	"header", "hr", "html", "iframe", "legend", "li", "link", "main",
+	"menu", "menuitem", "nav", "noframes", "ol", "optgroup", "option", "p",
+	"param", "section", "source", "summary", "table", "tbody", "td",
+	"tfoot", "th", "thead", "title", "tr", "track", "ul",
+};
+
+void identifyline(char *line, struct linedata *prev, struct linedata *ret) {
 	int i;
-	if (prev != PARAGRAPH) {
+	if (HTMLSTART <= prev->type && prev->type <= HTMLEND) {
+		identifyend(truncate(line), prev->type, ret);
+		return;
+	}
+	if (prev->type != PLAIN) {
 		for (i = 0; i < 4; ++i) {
 			if (!isspace(line[i]))
 				goto notspacecode;
@@ -71,13 +90,15 @@ notspacecode:
 		/* There has to be at least 3 delimiter characters */
 	}
 nothr:
-	for (i = 0; i < 3; ++i) {
-		if (line[i] != '`')
-			goto notfencedcode;
+	for (i = 0; line[i] == '`'; ++i) ;
+	if (i >= 3) {
+		ret->type = FENCECODE;
+		ret->data.intensity = i;
+		/* The last line of a fenced code block must have at least the
+		 * same number of backticks as the first. */
+		return;
 	}
-	ret->type = FENCECODE;
-	return;
-notfencedcode:
+/* notfencedcode: */
 
 	if (line[0] == '#') {
 		int pcount;
@@ -85,15 +106,73 @@ notfencedcode:
 		if (line[pcount] != ' ' && line[pcount] != '\0')
 			goto notheader;
 		ret->type = HEADER;
-		ret->intensity = pcount;
+		ret->data.intensity = pcount;
 		return;
 	}
 
 notheader:
+
+#define HTMLSTARTCASE(start, rettype) \
+	if (after(start, line) != NULL) { \
+		ret->type = rettype; \
+		ret->data.isfirst = 1; \
+		return; \
+	}
+	HTMLSTARTCASE("<!--", COMMENTLONG);
+	HTMLSTARTCASE("<![CDATA[", CDATA);
+	HTMLSTARTCASE("<?", PHP);
+	HTMLSTARTCASE("<!", COMMENTSHORT);
+
+	if (line[0] == '<') {
+		char *testline;
+		testline = line + 1;
+		for (i = 0; i < LEN(concretetags); ++i) {
+			char *aftertag;
+			aftertag = after(concretetags[i], testline);
+			if (aftertag == NULL)
+				continue;
+			if (aftertag[0] == '\0' || strchr(" >", aftertag[0])) {
+				ret->type = HTMLCONCRETE;
+				ret->data.isfirst = 1;
+				return;
+			}
+		}
+		if (testline[0] == '/')
+			++testline;
+		for (i = 0; i < LEN(skeletontags); ++i) {
+			char *aftertag;
+			aftertag = after(skeletontags[i], testline);
+			if (aftertag == NULL)
+				continue;
+			if (aftertag[0] == '\0' ||
+					strchr(" >", aftertag[0]) ||
+					after("/>", aftertag) != NULL) {
+				ret->type = SKELETON;
+				ret->data.isfirst = 1;
+				return;
+			}
+		}
+	}
+
 	ret->type = PLAIN;
 	return;
 }
-/* TODO: Finish this */
+
+char *realcontent(char *line, struct linedata *data) {
+	switch (data->type) {
+	case EMPTY: case HR: case SETEXT1: case SETEXT2: case FENCECODE:
+	case HTMLCONCRETE: case COMMENTLONG: case PHP: case CDATA:
+	case SKELETON: case COMMENTSHORT: case GENERICTAG:
+		return NULL;
+	case PLAIN:
+		return line;
+	case SPACECODE:
+		return line + 4;
+	case HEADER:
+		return truncate(line + data->data.intensity);
+	}
+	return NULL;
+}
 
 static char *truncate(char *str) {
 	while (isspace(str[0]))
@@ -101,16 +180,71 @@ static char *truncate(char *str) {
 	return str;
 }
 
-char *realcontent(char *line, struct linedata *data) {
-	switch (data->type) {
-	case EMPTY: case HR: case SETEXT1: case SETEXT2: case FENCECODE:
-		return NULL;
-	case PLAIN:
-		return line;
-	case SPACECODE:
-		return line + 4;
-	case HEADER:
-		return truncate(line + data->intensity);
+static char *after(char *begin, char *str) {
+	int i;
+	for (i = 0; begin[i]; ++i) {
+		if (begin[i] != str[0])
+			return NULL;
+		++str;
 	}
-	return NULL;
+	return str;
+}
+
+static void identifyend(char *line, enum linetype prev, struct linedata *ret) {
+	int i;
+	ret->type = EMPTY;
+	switch (prev) {
+	case EMPTY: case PLAIN: case SPACECODE: case FENCECODE: case HR:
+	case SETEXT1: case SETEXT2: case HEADER:
+		return;
+	/* In this case, something has gone terribly wrong. */
+
+	case HTMLCONCRETE:
+		for (i = 0; i < LEN(concretetags); ++i) {
+			char endtag[30];
+			sprintf(endtag, "</%s>", concretetags[i]);
+			if (strstr(line, endtag) != NULL) {
+				ret->type = HTMLCONCRETE;
+				ret->data.isfirst = 0;
+				return;
+			}
+		}
+		return;
+	case COMMENTLONG:
+		if (strstr(line, "-->") != NULL) {
+			ret->type = COMMENTLONG;
+			ret->data.isfirst = 0;
+		}
+		return;
+	case PHP:
+		if (strstr(line, "?>") != NULL) {
+			ret->type = PHP;
+			ret->data.isfirst = 0;
+		}
+		return;
+	case COMMENTSHORT:
+		if (strchr(line, '>') != NULL) {
+			ret->type = COMMENTSHORT;
+			ret->data.isfirst = 0;
+		}
+		return;
+	case CDATA:
+		if (strstr(line, "]]>") != NULL) {
+			ret->type = CDATA;
+			ret->data.isfirst = 0;
+		}
+		return;
+	case SKELETON:
+		if (line[0] == '\0') {
+			ret->type = SKELETON;
+			ret->data.isfirst = 0;
+		}
+		return;
+	case GENERICTAG:
+		if (line[0] == '\0') {
+			ret->type = GENERICTAG;
+			ret->data.isfirst = 0;
+		}
+		return;
+	}
 }

@@ -20,6 +20,8 @@
 
 #include <stddef.h>
 
+#define LEN(arr) (sizeof(arr) / sizeof *(arr))
+
 struct string {
 	size_t len;
 	size_t alloc;
