@@ -23,6 +23,7 @@
 #include <io.h>
 #include <util.h>
 #include <mdutil.h>
+#include <inlines.h>
 #include <template.h>
 
 struct parsestate {
@@ -80,12 +81,10 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 				type.data.intensity >=
 				currstate->intensity) {
 			currstate->prev.type = EMPTY;
-			fputs("</code>", out);
+			fputs("</code></pre>", out);
 			return 0;
 		}
-		if (!currstate->isfirst)
-			fputs("<br>", out);
-		fputs(line, out);
+		fprintf(out, "%s\n", line);
 		currstate->isfirst = 0;
 		return 0;
 	case HTMLCONCRETE:
@@ -124,7 +123,7 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 			return 1;
 		currstate->prev.type = EMPTY;
 		fputs("<h1>", out);
-		fwrite(currstate->para->data, 1, currstate->para->len, out);
+		writedata(currstate->para->data, currstate->para->len, out);
 		fputs("</h1>", out);
 		resetstring(currstate->para);
 		break;
@@ -133,7 +132,7 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 			goto hr;
 		currstate->prev.type = EMPTY;
 		fputs("<h2>", out);
-		fwrite(currstate->para->data, 1, currstate->para->len, out);
+		writedata(currstate->para->data, currstate->para->len, out);
 		fputs("</h2>", out);
 		resetstring(currstate->para);
 		break;
@@ -169,7 +168,7 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 		 * as to not include the wrong tags.
 		 * */
 	case FENCECODE:
-		fputs("<code class='block'>", out);
+		fputs("<pre><code>", out);
 		currstate->prev.type = FENCECODE;
 		currstate->isfirst = 1;
 		currstate->intensity = type.data.intensity;
@@ -186,10 +185,9 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 		break;
 	case HEADER:
 		endpara(currstate, out);
-		fprintf(out, "<h%d>%s</h%d>",
-				type.data.intensity,
-				realcontent(line, &type),
-				type.data.intensity);
+		fprintf(out, "<h%d>", type.data.intensity);
+		writeline(realcontent(line, &type), out);
+		fprintf(out, "</h%d>", type.data.intensity);
 		currstate->prev.type = EMPTY;
 		break;
 	case HTMLCONCRETE:
@@ -225,7 +223,7 @@ static int endpara(struct parsestate *state, FILE *out) {
 		return 0;
 	case PLAIN:
 		fputs("<p>", out);
-		fwrite(state->para->data, 1, state->para->len, out);
+		writedata(state->para->data, state->para->len, out);
 		fputs("</p>", out);
 		resetstring(state->para);
 		return 0;
