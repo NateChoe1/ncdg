@@ -47,7 +47,9 @@ void identifyline(char *line, struct linedata *prev, struct linedata *ret) {
 	}
 	if (prev->type != PLAIN) {
 		for (i = 0; i < 4; ++i) {
-			if (!isspace(line[i]))
+			if (line[i] == '\t')
+				break;
+			if (line[i] != ' ')
 				goto notspacecode;
 		}
 		ret->type = SPACECODE;

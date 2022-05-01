@@ -38,18 +38,9 @@ char *getline(struct linefile *file) {
 			ret[len] = '\0';
 			return ret;
 		}
-		if (c == '\t') {
-			do {
-				ret = append(ret, ' ', &len, &alloc);
-				if (ret == NULL)
-					return NULL;
-			} while (len % 4 != 0);
-		}
-		else {
-			ret = append(ret, c, &len, &alloc);
-			if (ret == NULL)
-				return NULL;
-		}
+		ret = append(ret, c, &len, &alloc);
+		if (ret == NULL)
+			return NULL;
 	}
 }
 
