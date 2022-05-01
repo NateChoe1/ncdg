@@ -77,3 +77,7 @@ int appendstrstring(struct string *str, char *s) {
 void resetstring(struct string *str) {
 	str->len = 0;
 }
+
+int isctrl(int c) {
+	return (0 <= c && c <= 0x1f) || c == 0x7f;
+}
