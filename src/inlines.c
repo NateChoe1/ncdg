@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <string.h>
 
 #include <util.h>
@@ -18,6 +19,7 @@ struct escape escapes[] = {
 static int writecodespan(char *data, int i, size_t len, FILE *out);
 static int writelink(char *data, int i, size_t len, FILE *out);
 static int writeimage(char *data, int i, size_t len, FILE *out);
+static int writeautolink(char *data, int i, size_t len, FILE *out);
 static int getlinkinfo(char *data, int i, size_t len,
 		int *textstart, int *textend,
 		int *titlestart, int *titleend,
@@ -38,6 +40,8 @@ void writedata(char *data, size_t len, FILE *out) {
 		if ((newi = writelink(data, i, len, out)) >= 0)
 			goto special;
 		if ((newi = writeimage(data, i, len, out)) >= 0)
+			goto special;
+		if ((newi = writeautolink(data, i, len, out)) >= 0)
 			goto special;
 		if (data[i] == '\\') {
 			if (strchr(punctuation, data[i + 1]) == NULL)
@@ -122,6 +126,40 @@ static int writeimage(char *data, int i, size_t len, FILE *out) {
 	fputs(" alt='", out);
 	writeescaped(data + textstart, textend - textstart, out);
 	fputs("'>", out);
+	return i;
+}
+
+static int writeautolink(char *data, int i, size_t len, FILE *out) {
+	int j, linkstart, linkend;
+	if (data[i++] != '<')
+		return -1;
+	linkstart = i;
+	if (!isalpha(data[i]))
+		return -1;
+	for (j = 1; j < 32 && i + j < len; ++j) {
+		char c;
+		c = data[i + j];
+		if (!isalpha(c) && !isdigit(c) && strchr("+.-", c) == NULL)
+			break;
+	}
+	if ((i += j) >= len)
+		return -1;
+	if (data[i] != ':')
+		return -1;
+	for (++i; i < len; ++i) {
+		if (isctrl(data[i]) || strchr(" <>", data[i]) != NULL)
+			break;
+	}
+	if (i >= len || data[i] != '>')
+		return -1;
+	linkend = i++;
+
+	fputs("<a href='", out);
+	writeescaped(data + linkstart, linkend - linkstart, out);
+	fputs("'>", out);
+	writeescaped(data + linkstart, linkend - linkstart, out);
+	fputs("</a>", out);
+
 	return i;
 }
 
