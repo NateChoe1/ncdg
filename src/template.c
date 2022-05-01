@@ -147,7 +147,7 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 			currstate->prev.type = PLAIN;
 		}
 		else
-			appendcharstring(currstate->para, ' ');
+			appendcharstring(currstate->para, '\n');
 		appendstrstring(currstate->para, realcontent(line, &type));
 		break;
 		/* According to the commonmark spec, this markdown:

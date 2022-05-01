@@ -37,6 +37,7 @@ static int writecodespan(char *data, int i, size_t len, FILE *out);
 static int writelink(char *data, int i, size_t len, FILE *out);
 static int writeimage(char *data, int i, size_t len, FILE *out);
 static int writeautolink(char *data, int i, size_t len, FILE *out);
+static int writehardbreak(char *data, int i, size_t len, FILE *out);
 static int getlinkinfo(char *data, int i, size_t len,
 		int *textstart, int *textend,
 		int *titlestart, int *titleend,
@@ -59,6 +60,8 @@ void writedata(char *data, size_t len, FILE *out) {
 		if ((newi = writeimage(data, i, len, out)) >= 0)
 			goto special;
 		if ((newi = writeautolink(data, i, len, out)) >= 0)
+			goto special;
+		if ((newi = writehardbreak(data, i, len, out)) >= 0)
 			goto special;
 		if (data[i] == '\\') {
 			if (strchr(punctuation, data[i + 1]) == NULL)
@@ -178,6 +181,25 @@ static int writeautolink(char *data, int i, size_t len, FILE *out) {
 	fputs("</a>", out);
 
 	return i;
+}
+
+static int writehardbreak(char *data, int i, size_t len, FILE *out) {
+	const char *endcode = "  \n";
+	const int codelen = strlen(endcode);
+	if (data[i] == '\\') {
+		if (++i >= len)
+			return -1;
+		if (data[i++] != '\n')
+			return -1;
+		fputs("<br />", out);
+		return i;
+	}
+	if (i + codelen >= len)
+		return -1;
+	if (memcmp(data + i, endcode, codelen) != 0)
+		return -1;
+	fputs("<br />", out);
+	return i + codelen;
 }
 
 static int getlinkinfo(char *data, int i, size_t len,
