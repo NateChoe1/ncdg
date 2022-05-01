@@ -17,6 +17,11 @@ struct escape escapes[] = {
 
 static int writecodespan(char *data, int i, size_t len, FILE *out);
 static int writelink(char *data, int i, size_t len, FILE *out);
+static int writeimage(char *data, int i, size_t len, FILE *out);
+static int getlinkinfo(char *data, int i, size_t len,
+		int *textstart, int *textend,
+		int *titlestart, int *titleend,
+		int *linkstart, int *linkend);
 static void writeescaped(char *data, size_t len, FILE *out);
 static void writechescape(char c, FILE *out);
 
@@ -31,6 +36,8 @@ void writedata(char *data, size_t len, FILE *out) {
 		if ((newi = writecodespan(data, i, len, out)) >= 0)
 			goto special;
 		if ((newi = writelink(data, i, len, out)) >= 0)
+			goto special;
+		if ((newi = writeimage(data, i, len, out)) >= 0)
 			goto special;
 		if (data[i] == '\\') {
 			if (strchr(punctuation, data[i + 1]) == NULL)
@@ -76,6 +83,52 @@ static int writecodespan(char *data, int i, size_t len, FILE *out) {
 
 static int writelink(char *data, int i, size_t len, FILE *out) {
 	int textstart, textend, titlestart, titleend, linkstart, linkend;
+	i = getlinkinfo(data, i, len, &textstart, &textend,
+			&titlestart, &titleend,
+			&linkstart, &linkend);
+	if (i < 0)
+		return -1;
+	fputs("<a href='", out);
+	writeescaped(data + linkstart, linkend - linkstart, out);
+	fputc('\'', out);
+	if (titlestart >= 0) {
+		fputs(" title='", out);
+		writeescaped(data + titlestart, titleend - titlestart, out);
+		fputc('\'', out);
+	}
+	fputc('>', out);
+	writeescaped(data + textstart, textend - textstart, out);
+	fputs("</a>", out);
+	return i;
+}
+
+static int writeimage(char *data, int i, size_t len, FILE *out) {
+	int textstart, textend, titlestart, titleend, linkstart, linkend;
+	if (data[i++] != '!')
+		return -1;
+	i = getlinkinfo(data, i, len, &textstart, &textend,
+			&titlestart, &titleend,
+			&linkstart, &linkend);
+	if (i < 0)
+		return -1;
+	fputs("<img src='", out);
+	writeescaped(data + linkstart, linkend - linkstart, out);
+	fputc('\'', out);
+	if (titlestart >= 0) {
+		fputs(" title='", out);
+		writeescaped(data + titlestart, titleend - titlestart, out);
+		fputc('\'', out);
+	}
+	fputs(" alt='", out);
+	writeescaped(data + textstart, textend - textstart, out);
+	fputs("'>", out);
+	return i;
+}
+
+static int getlinkinfo(char *data, int i, size_t len,
+		int *textstart, int *textend,
+		int *titlestart, int *titleend,
+		int *linkstart, int *linkend) {
 	int count;
 	enum {
 		INITIAL,
@@ -99,7 +152,7 @@ static int writelink(char *data, int i, size_t len, FILE *out) {
 				return -1;
 			state = GETTEXT;
 			count = 1;
-			textstart = i + 1;
+			*textstart = i + 1;
 			break;
 		case GETTEXT:
 			if (data[i] == '[')
@@ -107,8 +160,8 @@ static int writelink(char *data, int i, size_t len, FILE *out) {
 			if (data[i] == ']')
 				--count;
 			if (count == 0) {
-				textend = i;
-				linkstart = i;
+				*textend = i;
+				*linkstart = i;
 				state = GETDESTSTART;
 			}
 			break;
@@ -120,11 +173,11 @@ static int writelink(char *data, int i, size_t len, FILE *out) {
 		case GETDESTDETERMINE:
 			if (data[i] == '<') {
 				state = GETDESTPOINTY;
-				linkstart = i + 1;
+				*linkstart = i + 1;
 			}
 			else {
 				state = GETDESTNORMAL;
-				linkstart = i--;
+				*linkstart = i--;
 				count = 0;
 			}
 			break;
@@ -132,7 +185,7 @@ static int writelink(char *data, int i, size_t len, FILE *out) {
 			if (data[i] == '<' && data[i - 1] != '\\')
 				return -1;
 			if (data[i] == '>' && data[i - 1] != '\\') {
-				linkend = i;
+				*linkend = i;
 				state = GETTITLEDETERMINE;
 			}
 			break;
@@ -143,53 +196,53 @@ static int writelink(char *data, int i, size_t len, FILE *out) {
 				--count;
 			if (count < 0) {
 				state = GETTITLEDETERMINE;
-				linkend = i--;
+				*linkend = i--;
 				break;
 			}
 			if (count != 0)
 				break;
 			if (isctrl(data[i]) || data[i] == ' ') {
 				state = GETTITLEDETERMINE;
-				linkend = i;
+				*linkend = i;
 			}
 			break;
 		case GETTITLEDETERMINE:
 			switch (data[i]) {
 			case '"':
 				state = GETTITLEDOUBLEQUOTE;
-				titlestart = i + 1;
+				*titlestart = i + 1;
 				break;
 			case '\'':
 				state = GETTITLESINGLEQUOTE;
-				titlestart = i + 1;
+				*titlestart = i + 1;
 				break;
 			case '(':
 				state = GETTITLEPAREN;
 				count = 1;
-				titlestart = i + 1;
+				*titlestart = i + 1;
 				break;
 			default:
 				--i;
-				titlestart = titleend = -1;
+				*titlestart = *titleend = -1;
 				state = NEARLYTHERE;
 			}
 			break;
 		case GETTITLEDOUBLEQUOTE:
 			if (data[i] == '"' && data[i - 1] != '\\') {
-				titleend = i;
+				*titleend = i;
 				state = NEARLYTHERE;
 			}
 			break;
 		case GETTITLESINGLEQUOTE:
 			if (data[i] == '\'' && data[i - 1] != '\\') {
-				titleend = i;
+				*titleend = i;
 				state = NEARLYTHERE;
 			}
 			break;
 		case GETTITLEPAREN:
 			if (data[i] == '(' || data[i] == ')') {
 				if (data[i - 1] != '\\') {
-					titleend = i;
+					*titleend = i;
 					state = NEARLYTHERE;
 				}
 			}
@@ -206,18 +259,6 @@ static int writelink(char *data, int i, size_t len, FILE *out) {
 done:
 	if (state != DONE)
 		return -1;
-	fputs("<a", out);
-	fputs(" href='", out);
-	writeescaped(data + linkstart, linkend - linkstart, out);
-	fputc('\'', out);
-	if (titlestart >= 0) {
-		fputs(" title='", out);
-		writeescaped(data + titlestart, titleend - titlestart, out);
-		fputc('\'', out);
-	}
-	fputc('>', out);
-	writeescaped(data + textstart, textend - textstart, out);
-	fputs("</a>", out);
 	return i;
 }
 
