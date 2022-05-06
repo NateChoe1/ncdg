@@ -127,7 +127,6 @@ notheader:
 
 	if (line[0] == '<') {
 		char *testline;
-		int isopen;
 		testline = line + 1;
 		for (i = 0; i < LEN(concretetags); ++i) {
 			char *aftertag;
@@ -140,12 +139,8 @@ notheader:
 				return;
 			}
 		}
-		if (testline[0] == '/') {
+		if (testline[0] == '/')
 			++testline;
-			isopen = 0;
-		}
-		else
-			isopen = 1;
 		for (i = 0; i < LEN(skeletontags); ++i) {
 			char *aftertag;
 			aftertag = after(skeletontags[i], testline);
@@ -160,73 +155,15 @@ notheader:
 			}
 		}
 
-		/* < || </ */
-
-		if (!isalpha(testline[0]))
-			goto nothtml;
-		++testline;
-		while (isalnum(testline[0]) || testline[0] == '-')
-			++testline;
-
-		/* <[tag name] || </[tag name] */
-
-		for (;;) {
-			char *newtestline;
-			newtestline = truncate(testline);
-
-			if (!isalpha(newtestline[0]) &&
-					strchr("_:", newtestline[0]) == NULL)
-				break;
-			++newtestline;
-			while (isalnum(newtestline[0]) ||
-					strchr("_.:-", newtestline[0]) != NULL)
-				++newtestline;
-			/* Swallow attribute name */
-
-			newtestline = truncate(newtestline);
-			if (newtestline[0] == '=') {
-				char start;
-				++newtestline;
-				newtestline = truncate(newtestline);
-				start = newtestline[0];
-				switch (start) {
-				case '\'': case '"':
-					while (newtestline[0] != start &&
-							newtestline[0] != '\0')
-						++newtestline;
-					if (newtestline[0] == '\0')
-						goto nothtml;
-					break;
-				/* Swallow single/double quoted attribute
-				 * value */
-				default:
-					while (strchr("\"'=<>`", newtestline[0])
-							== NULL &&
-							newtestline[0] != '\0')
-						++newtestline;
-					if (newtestline[0] == '\0')
-						goto nothtml;
-					break;
-				/* Swallow unquoted attribute value */
-				}
-			}
-			/* Swallow attribute value */
-
-			testline = newtestline;
-		}
-		
-		/* <[tag name][attribute]* || </tag name][attribute]* */
-		if (isopen && testline[0] == '/')
-			++testline;
-		if (testline[0] == '>') {
+		if (isgenerictag(line)) {
 			ret->type = GENERICTAG;
 			ret->data.isfirst = 1;
 			return;
 		}
 	}
-nothtml:
 
 	ret->type = PLAIN;
+	ret->data.isfirst = 1;
 	return;
 }
 
@@ -244,6 +181,82 @@ char *realcontent(char *line, struct linedata *data) {
 		return truncate(line + data->data.intensity);
 	}
 	return NULL;
+}
+
+int isgenerictag(char *text) {
+	int isopen;
+	char *initialtext;
+	initialtext = text;
+	if (text[0] != '<')
+		return 0;
+	++text;
+	if (text[0] == '/') {
+		++text;
+		isopen = 0;
+	}
+	else
+		isopen = 1;
+
+	/* < || </ */
+
+	if (!isalpha(text[0]))
+		return 0;
+	while (isalnum(text[0]) || text[0] == '-')
+		++text;
+
+	/* <[tag name] || </[tag name] */
+
+	for (;;) {
+		char *newtext;
+		newtext = truncate(text);
+
+		if (!isalpha(newtext[0]) &&
+				strchr("_:", newtext[0]) == NULL)
+			break;
+		++newtext;
+		while (isalnum(newtext[0]) ||
+				strchr("_.:-", newtext[0]) != NULL)
+			++newtext;
+		/* Swallow attribute name */
+
+		newtext = truncate(newtext);
+		if (newtext[0] == '=') {
+			char start;
+			++newtext;
+			newtext = truncate(newtext);
+			start = newtext[0];
+			switch (start) {
+			case '\'': case '"':
+				while (newtext[0] != start &&
+						newtext[0] != '\0')
+					++newtext;
+				if (newtext[0] == '\0')
+					return 0;
+				break;
+			/* Swallow single/double quoted attribute
+			 * value */
+			default:
+				while (strchr("\"'=<>`", newtext[0])
+						== NULL &&
+						newtext[0] != '\0')
+					++newtext;
+				if (newtext[0] == '\0')
+					return 0;
+				break;
+			/* Swallow unquoted attribute value */
+			}
+		}
+		/* Swallow attribute value */
+
+		text = newtext;
+	}
+	
+	/* <[tag name][attribute]* || </tag name][attribute]* */
+	if (isopen && text[0] == '/')
+		++text;
+	if (text[0] == '>')
+		return text - initialtext + 1;
+	return 0;
 }
 
 static char *truncate(char *str) {

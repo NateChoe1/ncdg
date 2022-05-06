@@ -19,6 +19,7 @@
 #include <string.h>
 
 #include <util.h>
+#include <mdutil.h>
 #include <inlines.h>
 
 static const char *punctuation = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
@@ -38,12 +39,15 @@ static int writelink(char *data, int i, size_t len, FILE *out);
 static int writeimage(char *data, int i, size_t len, FILE *out);
 static int writeautolink(char *data, int i, size_t len, FILE *out);
 static int writehardbreak(char *data, int i, size_t len, FILE *out);
+static int writerawhtml(char *data, int i, size_t len, FILE *out);
 static int getlinkinfo(char *data, int i, size_t len,
 		int *textstart, int *textend,
 		int *titlestart, int *titleend,
 		int *linkstart, int *linkend);
 static void writeescaped(char *data, size_t len, FILE *out);
 static void writechescape(char c, FILE *out);
+static int inlinehtmlcase(char *data, char *start, char *end, FILE *out);
+/* Returns length of raw html */
 
 void writeline(char *data, FILE *out) {
 	writedata(data, strlen(data), out);
@@ -62,6 +66,8 @@ void writedata(char *data, size_t len, FILE *out) {
 		if ((newi = writeautolink(data, i, len, out)) >= 0)
 			goto special;
 		if ((newi = writehardbreak(data, i, len, out)) >= 0)
+			goto special;
+		if ((newi = writerawhtml(data, i, len, out)) >= 0)
 			goto special;
 		if (data[i] == '\\') {
 			if (strchr(punctuation, data[i + 1]) == NULL)
@@ -200,6 +206,48 @@ static int writehardbreak(char *data, int i, size_t len, FILE *out) {
 		return -1;
 	fputs("<br />", out);
 	return i + codelen;
+}
+
+static int writerawhtml(char *data, int i, size_t len, FILE *out) {
+	int taglen;
+	data += i;
+	taglen = isgenerictag(data);
+	if (taglen > 0) {
+		fwrite(data, 1, taglen, out);
+		return i + taglen;
+	}
+
+	if (memcmp(data, "<!--", 4) == 0) {
+		char *end, *text;
+		int j;
+		text = data + 4;
+		end = strstr(text, "-->");
+		if (end == NULL)
+			goto notcomment;
+		taglen = end - text;
+		if (text[0] == '>' || memcmp(text, "->", 2) == 0)
+			goto notcomment;
+		if (text[taglen - 1] == '-') {
+			goto notcomment;
+		}
+		for (j = 0; j < taglen - 1; ++j) {
+			if (memcmp(text + j, "--", 2) == 0)
+				goto notcomment;
+		}
+
+		fwrite(data, 1, taglen + 7, out);
+
+		return i + taglen + 7;
+	}
+notcomment:
+	if ((taglen = inlinehtmlcase(data, "<?", "?>", out)) > 0)
+		return i + taglen;
+	if ((taglen = inlinehtmlcase(data, "<!", ">", out)) > 0)
+		return i + taglen;
+	if ((taglen = inlinehtmlcase(data, "<![CDATA[", "]]>", out)) > 0)
+		return i + taglen;
+
+	return -1;
 }
 
 static int getlinkinfo(char *data, int i, size_t len,
@@ -354,4 +402,19 @@ static void writechescape(char c, FILE *out) {
 		}
 	}
 	fputc(c, out);
+}
+
+static int inlinehtmlcase(char *data, char *start, char *end, FILE *out) {
+	int i;
+	int len;
+	char *endloc;
+	for (i = 0; start[i] != '\0'; ++i)
+		if (data[i] != start[i])
+			return 0;
+	endloc = strstr(data, end);
+	if (endloc == NULL)
+		return 0;
+	len = endloc - data + strlen(end);
+	fwrite(data, 1, len, out);
+	return len;
 }

@@ -54,5 +54,7 @@ struct linedata {
 void identifyline(char *line, struct linedata *prev, struct linedata *ret);
 /* prev is almost never used, but sometimes it is. */
 char *realcontent(char *line, struct linedata *data);
+int isgenerictag(char *text);
+/* Identifies open and close tags */
 
 #endif
