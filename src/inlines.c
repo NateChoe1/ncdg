@@ -22,7 +22,6 @@
 #include <mdutil.h>
 #include <inlines.h>
 
-static const char *punctuation = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
 struct escape {
 	char c;
 	char *code;
@@ -34,12 +33,25 @@ struct escape escapes[] = {
 	{'"', "&quot;"},
 };
 
+struct deliminfo {
+	int length;
+	unsigned int capabilities;
+	char c;
+};
+static const unsigned int canopen = 1 << 0;
+static const unsigned int canclose = 1 << 1;
+
 static int writecodespan(char *data, int i, size_t len, FILE *out);
 static int writelink(char *data, int i, size_t len, FILE *out);
 static int writeimage(char *data, int i, size_t len, FILE *out);
 static int writeautolink(char *data, int i, size_t len, FILE *out);
 static int writehardbreak(char *data, int i, size_t len, FILE *out);
 static int writerawhtml(char *data, int i, size_t len, FILE *out);
+static int writedelimrun(char *data, int i, size_t len, FILE *out);
+static int getdeliminfo(char *data, int i, size_t len, struct deliminfo *ret);
+/* Returns non-zero if i isn't a delimiter */
+static void writeopentags(int count, FILE *out);
+static void writeclosetags(int count, FILE *out);
 static int getlinkinfo(char *data, int i, size_t len,
 		int *textstart, int *textend,
 		int *titlestart, int *titleend,
@@ -69,8 +81,10 @@ void writedata(char *data, size_t len, FILE *out) {
 			goto special;
 		if ((newi = writerawhtml(data, i, len, out)) >= 0)
 			goto special;
+		if ((newi = writedelimrun(data, i, len, out)) >= 0)
+			goto special;
 		if (data[i] == '\\') {
-			if (strchr(punctuation, data[i + 1]) == NULL)
+			if (!ispunc(data[i + 1]))
 				writechescape('\\', out);
 			++i;
 		}
@@ -248,6 +262,106 @@ notcomment:
 		return i + taglen;
 
 	return -1;
+}
+
+static int writedelimrun(char *data, int i, size_t len, FILE *out) {
+	struct deliminfo startdelim;
+	int end;
+	if (getdeliminfo(data, i, len, &startdelim))
+		return -1;
+	for (end = i + startdelim.length;
+			end < len && startdelim.length > 0; ++end) {
+		struct deliminfo enddelim;
+		if (getdeliminfo(data, end, len, &enddelim))
+			continue;
+		if (startdelim.c != enddelim.c)
+			continue;
+		if (enddelim.capabilities & canclose) {
+			if (startdelim.length == enddelim.length) {
+				int begin;
+				begin = i + startdelim.length;
+				writeopentags(startdelim.length, out);
+				writedata(data + begin, end - begin, out);
+				writeclosetags(startdelim.length, out);
+				return end + enddelim.length;
+			}
+		}
+		else if (enddelim.capabilities & canopen)
+			startdelim.length -= enddelim.length;
+		/* Handles cases like "**a b* c* "*/
+		/* TODO: This does not properly handle cases like "**a b* c* "*/
+	}
+	return -1;
+}
+
+static int getdeliminfo(char *data, int i, size_t len, struct deliminfo *ret) {
+	const unsigned int flanksleft = 1 << 0;
+	const unsigned int flanksright = 1 << 1;
+	unsigned int flanks;
+	if (data[i] != '*' && data[i] != '_')
+		return 1;
+	ret->c = data[i];
+	for (ret->length = 0; i + ret->length < len &&
+			data[i + ret->length] == ret->c; ++ret->length) ;
+	flanks = 0;
+	if (i != 0) {
+		if (ispunc(data[i - 1])) {
+			if (i + ret->length >= len)
+				flanks |= flanksright;
+			else {
+				char after;
+				after = data[i + ret->length];
+				if (isspace(after) || ispunc(after))
+					flanks |= flanksright;
+			}
+		}
+		else {
+			flanks |= flanksright;
+		}
+	}
+	if (i + ret->length < len) {
+		if (!isspace(data[i + ret->length])) {
+			if (!ispunc(data[i + ret->length]))
+				flanks |= flanksleft;
+			else if (i == 0 || isspace(data[i - 1]) || ispunc(data[i - 1]))
+				flanks |= flanksleft;
+		}
+	}
+
+	ret->capabilities = 0;
+	if (ret->c == '*') {
+		if (flanks & flanksleft)
+			ret->capabilities |= canopen;
+		if (flanks & flanksright)
+			ret->capabilities |= canclose;
+	}
+	else {
+		if (flanks & flanksleft && (!(flanks & flanksright) ||
+				(i > 0 && ispunc(data[i - 1]))))
+			ret->capabilities |= canopen;
+		if (flanks & flanksright && (!(flanks & flanksleft) ||
+				(ret->length + i < len && ispunc(data[i + 1]))))
+			ret->capabilities |= canopen;
+	}
+	/* I have absolutely no clue why the different characters used in
+	 * delimiter runs have different meanings, but I absolutely hate that
+	 * they do. */
+	return 0;
+}
+
+static void writeopentags(int count, FILE *out) {
+	int i;
+	if (count % 2 != 0)
+		fputs("<em>", out);
+	for (i = 0; i < count / 2; ++i)
+		fputs("<strong>", out);
+}
+static void writeclosetags(int count, FILE *out) {
+	int i;
+	for (i = 0; i < count / 2; ++i)
+		fputs("</strong>", out);
+	if (count % 2 != 0)
+		fputs("</em>", out);
 }
 
 static int getlinkinfo(char *data, int i, size_t len,

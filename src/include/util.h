@@ -34,5 +34,6 @@ int appendcharstring(struct string *str, char c);
 int appendstrstring(struct string *str, char *s);
 void resetstring(struct string *str);
 int isctrl(int c);
+int ispunc(int c);
 
 #endif
