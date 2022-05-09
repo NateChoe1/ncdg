@@ -24,7 +24,7 @@
 #include <util.h>
 #include <mdutil.h>
 #include <inlines.h>
-#include <template.h>
+#include <markdown.h>
 
 struct parsestate {
 	struct linedata prev;
@@ -43,7 +43,7 @@ static void handlehtmlcase(struct linedata *data, struct parsestate *state,
 static void handlehtmlmiddle(struct linedata *data, struct parsestate *state,
 		char *line, FILE *out);
 
-int parsetemplate(FILE *infile, FILE *outfile) {
+int parsemarkdown(FILE *infile, FILE *outfile) {
 	struct linefile *realin;
 	struct parsestate currstate;
 	int code;

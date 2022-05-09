@@ -21,29 +21,20 @@
 #include <unistd.h>
 
 #include <html.h>
-#include <template.h>
+#include <markdown.h>
 
 static void printhelp(FILE *file, char *name);
 
 int main(int argc, char **argv) {
-	char *header, *template, *footer, *out;
+	int i;
+	char *out;
 	FILE *outfile;
 	int c;
-	const char *filefailmsg = "Failed to open file %s\n";
 
-	header = template = footer = out = NULL;
+	out = NULL;
 
-	while ((c = getopt(argc, argv, "b:t:e:o:h")) >= 0) {
+	while ((c = getopt(argc, argv, "o:h")) >= 0) {
 		switch (c) {
-		case 'b':
-			header = optarg;
-			break;
-		case 't':
-			template = optarg;
-			break;
-		case 'e':
-			footer = optarg;
-			break;
 		case 'o':
 			out = optarg;
 			break;
@@ -61,54 +52,25 @@ int main(int argc, char **argv) {
 	else
 		outfile = fopen(out, "w");
 
-	if (header != NULL) {
-		FILE *headerfile;
-		headerfile = fopen(header, "r");
-		if (headerfile != NULL) {
-			if (copyhtml(headerfile, outfile)) {
-				fputs(filefailmsg, stderr);
-				return 1;
-			}
+	for (i = optind; i < argc; ++i) {
+		FILE *infile;
+		infile = fopen(argv[i], "r");
+		if (infile == NULL) {
+			fprintf(stderr, "Failed to open file %s\n", argv[i]);
+			return 1;
 		}
-		else {
-			fprintf(stderr, filefailmsg, header);
+		if (parsemarkdown(infile, outfile)) {
+			fprintf(stderr, "Failed to parse file %s\n", argv[i]);
 			return 1;
 		}
 	}
-	if (template != NULL) {
-		FILE *templatefile;
-		templatefile = fopen(template, "r");
-		if (templatefile != NULL) {
-			if (parsetemplate(templatefile, outfile))
-				return 1;
-		}
-		else {
-			fprintf(stderr, filefailmsg, template);
-			return 1;
-		}
-	}
-	if (footer != NULL) {
-		FILE *footerfile;
-		footerfile = fopen(footer, "r");
-		if (footerfile != NULL) {
-			if (copyhtml(footerfile, outfile)) {
-				fputs("Failed to copy footer\n", stderr);
-				return 1;
-			}
-		}
-		else {
-			fprintf(stderr, filefailmsg, footer);
-			return 1;
-		}
-	}
-	if (outfile != stdout)
-		fclose(outfile);
+
 	return 0;
 }
 
 static void printhelp(FILE *file, char *name) {
 	fprintf(file,
-"Usage: %s -b [header] -t [template] -e [footer] -o [output]\n", name);
+"Usage: %s [file1.md] [file2.md] ... -o [output]\n", name);
 	fputs(
 "This program is free software. You can redistribute and/or modify it under\n"
 "the terms of the GNU General Public License as published by the Free\n"

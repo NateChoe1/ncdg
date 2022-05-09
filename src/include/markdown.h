@@ -15,11 +15,11 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-#ifndef HAVE_TEMPLATE
-#define HAVE_TEMPLATE
+#ifndef HAVE_MARKDOWN
+#define HAVE_MARKDOWN
 
 #include <stdio.h>
 
-int parsetemplate(FILE *infile, FILE *outfile);
+int parsemarkdown(FILE *infile, FILE *outfile);
 
 #endif
