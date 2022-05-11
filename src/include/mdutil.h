@@ -47,7 +47,7 @@ struct linedata {
 	enum linetype type;
 	union {
 		int intensity;
-		int isfirst;
+		int islast;
 	} data;
 };
 

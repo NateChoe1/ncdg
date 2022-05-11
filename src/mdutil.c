@@ -25,7 +25,7 @@
 
 static char *truncate(char *str);
 static char *after(char *begin, char *str);
-static void identifyend(char *line, enum linetype prev, struct linedata *ret);
+static int isend(char *line, enum linetype prev);
 
 static char *concretetags[] = { "pre", "script", "style", "textarea" };
 static char *skeletontags[] = {
@@ -42,7 +42,8 @@ static char *skeletontags[] = {
 void identifyline(char *line, struct linedata *prev, struct linedata *ret) {
 	int i;
 	if (HTMLSTART <= prev->type && prev->type <= HTMLEND) {
-		identifyend(truncate(line), prev->type, ret);
+		ret->type = prev->type;
+		ret->data.islast = isend(truncate(line), prev->type);
 		return;
 	}
 	if (prev->type != PLAIN) {
@@ -117,7 +118,7 @@ notheader:
 #define HTMLSTARTCASE(start, rettype) \
 	if (after(start, line) != NULL) { \
 		ret->type = rettype; \
-		ret->data.isfirst = 1; \
+		ret->data.islast = isend(line, rettype); \
 		return; \
 	}
 	HTMLSTARTCASE("<!--", COMMENTLONG);
@@ -128,6 +129,8 @@ notheader:
 	if (line[0] == '<') {
 		char *testline;
 		testline = line + 1;
+		if (testline[0] == '/')
+			++testline;
 		for (i = 0; i < LEN(concretetags); ++i) {
 			char *aftertag;
 			aftertag = after(concretetags[i], testline);
@@ -135,35 +138,33 @@ notheader:
 				continue;
 			if (aftertag[0] == '\0' || strchr(" >", aftertag[0])) {
 				ret->type = HTMLCONCRETE;
-				ret->data.isfirst = 1;
+				ret->data.islast = 0;
 				return;
 			}
 		}
-		if (testline[0] == '/')
-			++testline;
 		for (i = 0; i < LEN(skeletontags); ++i) {
 			char *aftertag;
 			aftertag = after(skeletontags[i], testline);
 			if (aftertag == NULL)
 				continue;
 			if (aftertag[0] == '\0' ||
-					strchr(" >", aftertag[0]) ||
+					strchr(" \t>", aftertag[0]) ||
 					after("/>", aftertag) != NULL) {
 				ret->type = SKELETON;
-				ret->data.isfirst = 1;
+				ret->data.islast = 0;
 				return;
 			}
 		}
 
 		if (isgenerictag(line)) {
 			ret->type = GENERICTAG;
-			ret->data.isfirst = 1;
+			ret->data.islast = 0;
 			return;
 		}
 	}
 
 	ret->type = PLAIN;
-	ret->data.isfirst = 1;
+	ret->data.islast = 0;
 	return;
 }
 
@@ -275,61 +276,32 @@ static char *after(char *begin, char *str) {
 	return str;
 }
 
-static void identifyend(char *line, enum linetype prev, struct linedata *ret) {
+static int isend(char *line, enum linetype prev) {
 	int i;
-	ret->type = EMPTY;
+
 	switch (prev) {
 	case EMPTY: case PLAIN: case SPACECODE: case FENCECODE: case HR:
 	case SETEXT1: case SETEXT2: case HEADER:
-		return;
+		return 1;
 	/* In this case, something has gone terribly wrong. */
 
 	case HTMLCONCRETE:
 		for (i = 0; i < LEN(concretetags); ++i) {
 			char endtag[30];
 			sprintf(endtag, "</%s>", concretetags[i]);
-			if (strstr(line, endtag) != NULL) {
-				ret->type = HTMLCONCRETE;
-				ret->data.isfirst = 0;
-				return;
-			}
+			return strstr(line, endtag) != NULL;
 		}
-		return;
+		return 0;
 	case COMMENTLONG:
-		if (strstr(line, "-->") != NULL) {
-			ret->type = COMMENTLONG;
-			ret->data.isfirst = 0;
-		}
-		return;
+		return strstr(line, "-->") != NULL;
 	case PHP:
-		if (strstr(line, "?>") != NULL) {
-			ret->type = PHP;
-			ret->data.isfirst = 0;
-		}
-		return;
+		return strstr(line, "?>") != NULL;
 	case COMMENTSHORT:
-		if (strchr(line, '>') != NULL) {
-			ret->type = COMMENTSHORT;
-			ret->data.isfirst = 0;
-		}
-		return;
+		return strchr(line, '>') != NULL;
 	case CDATA:
-		if (strstr(line, "]]>") != NULL) {
-			ret->type = CDATA;
-			ret->data.isfirst = 0;
-		}
-		return;
-	case SKELETON:
-		if (line[0] == '\0') {
-			ret->type = SKELETON;
-			ret->data.isfirst = 0;
-		}
-		return;
-	case GENERICTAG:
-		if (line[0] == '\0') {
-			ret->type = GENERICTAG;
-			ret->data.isfirst = 0;
-		}
-		return;
+		return strstr(line, "]]>") != NULL;
+	case SKELETON: case GENERICTAG:
+		return line[0] == '\0';
 	}
+	return 1;
 }

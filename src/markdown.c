@@ -40,8 +40,6 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out);
 static int endpara(struct parsestate *state, FILE *out);
 static void handlehtmlcase(struct linedata *data, struct parsestate *state,
 		char *line, FILE *out);
-static void handlehtmlmiddle(struct linedata *data, struct parsestate *state,
-		char *line, FILE *out);
 
 int parsemarkdown(FILE *infile, FILE *outfile) {
 	struct linefile *realin;
@@ -88,25 +86,25 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 		currstate->isfirst = 0;
 		return 0;
 	case HTMLCONCRETE:
-		handlehtmlmiddle(&type, currstate, line, out);
+		handlehtmlcase(&type, currstate, line, out);
 		return 0;
 	case COMMENTLONG:
-		handlehtmlmiddle(&type, currstate, line, out);
+		handlehtmlcase(&type, currstate, line, out);
 		return 0;
 	case PHP:
-		handlehtmlmiddle(&type, currstate, line, out);
+		handlehtmlcase(&type, currstate, line, out);
 		return 0;
 	case COMMENTSHORT:
-		handlehtmlmiddle(&type, currstate, line, out);
+		handlehtmlcase(&type, currstate, line, out);
 		return 0;
 	case CDATA:
-		handlehtmlmiddle(&type, currstate, line, out);
+		handlehtmlcase(&type, currstate, line, out);
 		return 0;
 	case SKELETON:
-		handlehtmlmiddle(&type, currstate, line, out);
+		handlehtmlcase(&type, currstate, line, out);
 		return 0;
 	case GENERICTAG:
-		handlehtmlmiddle(&type, currstate, line, out);
+		handlehtmlcase(&type, currstate, line, out);
 		return 0;
 	case EMPTY: case PLAIN: case SPACECODE: case HR:
 	case SETEXT1: case SETEXT2: case HEADER:
@@ -157,7 +155,7 @@ static int parseline(char *line, struct parsestate *currstate, FILE *out) {
 
 		 * Should NOT compile to this:
 
-		<p>Chapter 1</p><hr>
+		<p>Chapter 1</p><hr />
 
 		 * but rather to this
 
@@ -249,14 +247,8 @@ static void handlehtmlcase(struct linedata *data, struct parsestate *state,
 	fputs(line, out);
 	fputc('\n', out);
 	state->prev.type = data->type;
-}
-
-static void handlehtmlmiddle(struct linedata *data, struct parsestate *state,
-		char *line, FILE *out) {
-	if (state->prev.type == data->type && !data->data.isfirst) {
+	if (state->prev.type == data->type && data->data.islast) {
 		state->prev.type = EMPTY;
 		return;
 	}
-	fputs(line, out);
-	fputc('\n', out);
 }
