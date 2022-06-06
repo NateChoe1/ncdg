@@ -104,8 +104,7 @@ static int writefile(struct expandfile *file, FILE *out) {
 				break;
 			}
 			case AUTOESCAPE_CHAR:
-				for (++i; data->data[i] != ESCAPE_CHAR &&
-						i < data->len; ++i) {
+				for (++i; i < data->len; ++i) {
 					switch (data->data[i]) {
 					case '&':
 						fputs("&amp;", out);
@@ -118,16 +117,27 @@ static int writefile(struct expandfile *file, FILE *out) {
 					case '>':
 						fputs("&gt;", out);
 						break;
+					case ESCAPE_CHAR:
+						if (data->data[i + 1] != ESCAPE_CHAR)
+							goto autoescapeend;
+						++i;
+						/* fallthrough */
 					default:
 						fputc(data->data[i], out);
 						break;
 					}
 				}
+autoescapeend:
 				break;
 			case NOMINIFY_CHAR:
-				for (++i; data->data[i] != ESCAPE_CHAR &&
-						i < data->len; ++i)
+				for (++i; data->data[i] != ESCAPE_CHAR && i < data->len; ++i) {
+					if (data->data[i] == ESCAPE_CHAR) {
+						if (data->data[i + 1] != ESCAPE_CHAR)
+							break;
+						++i;
+					}
 					fputc(data->data[i], out);
+				}
 				break;
 			}
 		}
