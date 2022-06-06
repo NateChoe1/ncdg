@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <string.h>
+#include <strings.h>
 
 struct string *newstring() {
 	struct string *ret;
@@ -25,9 +25,7 @@ int appendchar(struct string *string, char c) {
 	if (string->len >= string->alloc) {
 		char *newdata;
 		size_t newalloc;
-		newalloc = string->alloc;
-		while (string->len >= newalloc)
-			newalloc *= 2;
+		newalloc = string->alloc * 2;
 		newdata = realloc(string->data, newalloc);
 		if (newdata == NULL)
 			return 1;

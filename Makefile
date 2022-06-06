@@ -2,7 +2,7 @@ SRC = $(wildcard src/*.c)
 OBJ = $(subst .c,.o,$(subst src,work,$(SRC)))
 LDFLAGS =
 CFLAGS := -O2 -pipe -Wall -Wpedantic -Wshadow -ansi
-CFLAGS += -Isrc/include/ -D_POSIX_C_SOURCE=2
+CFLAGS += -Isrc/include/
 INSTALLDIR := /usr/bin/
 OUT = ncdg
 
