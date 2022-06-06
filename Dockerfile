@@ -6,5 +6,6 @@ RUN make
 
 FROM debian:stable-slim AS run
 COPY --from=build /ncdg/build/ncdg /usr/bin/ncdg
+RUN apt-get update && apt-get upgrade -y
 
 ENTRYPOINT [ "ncdg", "/dev/stdin" ]

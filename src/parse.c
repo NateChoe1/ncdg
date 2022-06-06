@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,9 +19,19 @@ struct expandfile {
 	/* This is a vector of struct var */
 };
 
+struct minstate {
+	int ignore;
+	/* If this is set, then ignore the current whitespace group */
+	int isspace;
+	/* If this is set, then we've seen whitespace on the previous char. */
+};
+
 static int expandfile(struct expandfile *ret, char *filename, int level);
 static int writefile(struct expandfile *file, FILE *out);
 static struct string *getstring(FILE *file, char end);
+static void initminstate(struct minstate *state);
+static void mputs(struct minstate *state, char *s, FILE *file);
+static void mputc(struct minstate *state, char c, FILE *file);
 
 int parsefile(char *template, FILE *out) {
 	struct expandfile expanded;
@@ -59,13 +70,15 @@ error1:
 
 static int writefile(struct expandfile *file, FILE *out) {
 	long i;
+	struct minstate s;
+	initminstate(&s);
 	for (i = 0; i < file->data->len; ++i) {
 		if (file->data->data[i] == ESCAPE_CHAR) {
 			const struct string *data = file->data;
 			const struct vector *vars = file->vars;
 			switch (data->data[++i]) {
 			case ESCAPE_CHAR:
-				fputc(ESCAPE_CHAR, out);
+				mputc(&s, ESCAPE_CHAR, out);
 				break;
 			case VAR_CHAR: {
 				long start;
@@ -84,7 +97,7 @@ static int writefile(struct expandfile *file, FILE *out) {
 							struct var, j);
 					if (strcmp(var.var->data,
 							varname) == 0) {
-						fputs(var.value->data,
+						mputs(&s, var.value->data,
 								out);
 					}
 				}
@@ -115,7 +128,7 @@ static int writefile(struct expandfile *file, FILE *out) {
 			}
 		}
 		else
-			fputc(file->data->data[i], out);
+			mputc(&s, file->data->data[i], out);
 	}
 	return 0;
 }
@@ -130,6 +143,7 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 	}
 	linenum = 1;
 	if (level >= MAX_INCLUDE_DEPTH) {
+
 		fprintf(stderr, "The include depth has reached %d, quitting\n",
 				level);
 		fclose(file);
@@ -224,4 +238,26 @@ static struct string *getstring(FILE *file, char end) {
 error:
 	freestring(ret);
 	return NULL;
+}
+
+static void initminstate(struct minstate *state) {
+	memset(state, 0, sizeof *state);
+}
+
+static void mputs(struct minstate *state, char *s, FILE *file) {
+	int i;
+	for (i = 0; s[i] != '\0'; ++i)
+		mputc(state, s[i], file);
+}
+
+static void mputc(struct minstate *state, char c, FILE *file) {
+	if (isspace(c))
+		state->isspace = 1;
+	else {
+		if (!state->ignore && state->isspace && c != '<' && c != '>')
+			fputc(' ', file);
+		fputc(c, file);
+		state->ignore = c == '<' || c == '>';
+		state->isspace = 0;
+	}
 }

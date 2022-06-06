@@ -3,6 +3,8 @@
 A very simple tool to generate natechoe.dev pages. It's effectively just a
 generic file preprocessor with HTML some auto escaping.
 
+Please not that ncdg minifies HTML so these examples aren't really correct.
+
 ## Usage
 
 There are only 3 features in ncdg:
@@ -104,3 +106,5 @@ Result:
 <pre><code>
 #include &lt;stdio.h%gt;
 </code></pre>
+
+Note that text inside of escaped sections are not minified.
