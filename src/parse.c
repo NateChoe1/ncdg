@@ -183,8 +183,23 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 						goto error;
 					if (appendchar(ret->data, c))
 						goto error;
-					if (c == ESCAPE_CHAR)
-						break;
+					if (c == '\n')
+						++linenum;
+					if (c == ESCAPE_CHAR) {
+						c = fgetc(file);
+						if (c == ESCAPE_CHAR) {
+							if (appendchar(
+								ret->data, c))
+								goto error;
+							if (appendchar(
+								ret->data, c))
+								goto error;
+						}
+						else {
+							ungetc(c, file);
+							break;
+						}
+					}
 					c = fgetc(file);
 				}
 				break;
@@ -207,8 +222,8 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 				break;
 			}
 			default:
-				fprintf(stderr, "Line %d: Invalid escape\n",
-						linenum);
+				fprintf(stderr, "Line %d: Invalid escape %c\n",
+						linenum, c);
 				goto error;
 			}
 			break;
