@@ -19,78 +19,103 @@ struct expandfile {
 };
 
 static int expandfile(struct expandfile *ret, char *filename, int level);
+static int writefile(struct expandfile *file, FILE *out);
 static struct string *getstring(FILE *file, char end);
 
 int parsefile(char *template, FILE *out) {
-	struct expandfile *expanded;
-	expanded = malloc(sizeof *expanded);
-	if (expanded == NULL)
+	struct expandfile expanded;
+	int ret;
+	expanded.data = newstring();
+	if (expanded.data == NULL) {
+		ret = 1;
 		goto error1;
-	expanded->data = newstring();
-	if (expanded->data == NULL)
-		goto error2;
-	expanded->vars = newvector(struct var);
-	if (expanded->vars == NULL)
-		goto error3;
-	if (expandfile(expanded, template, 0))
-		goto error4;
-	{
-		long i;
-		for (i = 0; i < expanded->data->len; ++i) {
-			if (expanded->data->data[i] == ESCAPE_CHAR) {
-				switch (expanded->data->data[++i]) {
-				case ESCAPE_CHAR:
-					fputc(ESCAPE_CHAR, out);
-					break;
-				case VAR_CHAR: {
-					long start;
-					int j;
-					struct string *data;
-					struct vector *vars;
-					char *varname;
-					data = expanded->data;
-					start = ++i;
-					while (data->data[i] != ESCAPE_CHAR &&
-							i < data->len)
-						++i;
-					data->data[i] = '\0';
-					varname = data->data + start;
-					vars = expanded->vars;
-					for (j = 0; j < vars->len; ++j) {
-						struct var var;
-						var = getvector(vars,
-								struct var, j);
-						if (strcmp(var.var->data,
-								varname) == 0) {
-							fputs(var.value->data,
-									out);
-						}
-					}
-				}
-				}
-			}
-			else
-				fputc(expanded->data->data[i], out);
-		}
 	}
-	return 0;
-error4:
+	expanded.vars = newvector(struct var);
+	if (expanded.vars == NULL) {
+		ret = 1;
+		goto error2;
+	}
+	if (expandfile(&expanded, template, 0)) {
+		ret = 1;
+		goto error3;
+	}
+	ret = writefile(&expanded, out);
+error3:
 	{
 		int i;
-		for (i = 0; i < expanded->vars->len; ++i) {
+		for (i = 0; i < expanded.vars->len; ++i) {
 			struct var var;
-			var = getvector(expanded->vars, struct var, i);
+			var = getvector(expanded.vars, struct var, i);
 			freestring(var.var);
 			freestring(var.value);
 		}
 	}
-	freevector(expanded->vars);
-error3:
-	freestring(expanded->data);
+	freevector(expanded.vars);
 error2:
-	free(expanded);
+	freestring(expanded.data);
 error1:
-	return 1;
+	return ret;
+}
+
+static int writefile(struct expandfile *file, FILE *out) {
+	long i;
+	for (i = 0; i < file->data->len; ++i) {
+		if (file->data->data[i] == ESCAPE_CHAR) {
+			const struct string *data = file->data;
+			const struct vector *vars = file->vars;
+			switch (data->data[++i]) {
+			case ESCAPE_CHAR:
+				fputc(ESCAPE_CHAR, out);
+				break;
+			case VAR_CHAR: {
+				long start;
+				int j;
+				char *varname;
+				start = ++i;
+				while (data->data[i] != ESCAPE_CHAR &&
+						i < data->len)
+					++i;
+				data->data[i] = '\0';
+				varname = data->data + start;
+				vars = file->vars;
+				for (j = 0; j < vars->len; ++j) {
+					struct var var;
+					var = getvector(vars,
+							struct var, j);
+					if (strcmp(var.var->data,
+							varname) == 0) {
+						fputs(var.value->data,
+								out);
+					}
+				}
+			}
+			case AUTOESCAPE_CHAR:
+				for (++i; data->data[i] != ESCAPE_CHAR &&
+						i < data->len;
+						++i) {
+					switch (data->data[i]) {
+					case '&':
+						fputs("&amp;", out);
+						break;
+					case ';':
+						fputs("&semi;", out);
+					case '<':
+						fputs("&lt;", out);
+						break;
+					case '>':
+						fputs("&gt;", out);
+						break;
+					default:
+						fputc(data->data[i], out);
+						break;
+					}
+				}
+			}
+		}
+		else
+			fputc(file->data->data[i], out);
+	}
+	return 0;
 }
 
 static int expandfile(struct expandfile *ret, char *filename, int level) {
@@ -120,7 +145,7 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 				if (appendchar(ret->data, ESCAPE_CHAR))
 					goto error;
 				break;
-			case VAR_CHAR:
+			case VAR_CHAR: case AUTOESCAPE_CHAR:
 				if (appendchar(ret->data, ESCAPE_CHAR))
 					goto error;
 				for (;;) {
