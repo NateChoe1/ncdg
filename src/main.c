@@ -1,79 +1,32 @@
-/*
-   ncdg - A program to help generate natechoe.dev
-   Copyright (C) 2022  Nate Choe (natechoe9@gmail.com)
-
-   This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
-
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
-
-   You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-#define _POSIX_C_SOURCE 2
-
 #include <stdio.h>
-#include <unistd.h>
+#include <stdlib.h>
 
-#include <html.h>
-#include <markdown.h>
+#include <parse.h>
 
-static void printhelp(FILE *file, char *name);
+static void printhelp(char *progname);
 
 int main(int argc, char **argv) {
-	int i;
-	char *out;
+	char *template;
 	FILE *outfile;
-	int c;
 
-	out = NULL;
+	if (argc < 2)
+		printhelp(argv[0]);
+	template = argv[1];
 
-	while ((c = getopt(argc, argv, "o:h")) >= 0) {
-		switch (c) {
-		case 'o':
-			out = optarg;
-			break;
-		case 'h':
-			printhelp(stdout, argv[0]);
-			return 0;
-		default:
-			printhelp(stderr, argv[0]);
-			return 1;
-		}
-	}
-
-	if (out == NULL)
+	if (argc < 3)
 		outfile = stdout;
-	else
-		outfile = fopen(out, "w");
-
-	for (i = optind; i < argc; ++i) {
-		FILE *infile;
-		infile = fopen(argv[i], "r");
-		if (infile == NULL) {
-			fprintf(stderr, "Failed to open file %s\n", argv[i]);
-			return 1;
-		}
-		if (parsemarkdown(infile, outfile)) {
-			fprintf(stderr, "Failed to parse file %s\n", argv[i]);
-			return 1;
+	else {
+		outfile = fopen(argv[2], "w");
+		if (outfile == NULL) {
+			fprintf(stderr, "Failed to open file %s for writing\n",
+					argv[2]);
 		}
 	}
 
-	return 0;
+	return parsefile(template, outfile);
 }
 
-static void printhelp(FILE *file, char *name) {
-	fprintf(file,
-"Usage: %s [file1.md] [file2.md] ... -o [output]\n", name);
-	fputs(
-"This program is free software. You can redistribute and/or modify it under\n"
-"the terms of the GNU General Public License as published by the Free\n"
-"Software Foundation, either version 3 of the License, or (at your option)\n"
-"any later version.\n", file);
+static void printhelp(char *progname) {
+	fprintf(stderr, "Usage: %s [template] (out)\n", progname);
+	exit(EXIT_FAILURE);
 }
