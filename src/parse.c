@@ -88,6 +88,7 @@ static int writefile(struct expandfile *file, FILE *out) {
 								out);
 					}
 				}
+				break;
 			}
 			case AUTOESCAPE_CHAR:
 				for (++i; data->data[i] != ESCAPE_CHAR &&
@@ -110,6 +111,7 @@ static int writefile(struct expandfile *file, FILE *out) {
 						break;
 					}
 				}
+				break;
 			}
 		}
 		else
