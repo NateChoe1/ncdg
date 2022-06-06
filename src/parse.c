@@ -105,8 +105,7 @@ static int writefile(struct expandfile *file, FILE *out) {
 			}
 			case AUTOESCAPE_CHAR:
 				for (++i; data->data[i] != ESCAPE_CHAR &&
-						i < data->len;
-						++i) {
+						i < data->len; ++i) {
 					switch (data->data[i]) {
 					case '&':
 						fputs("&amp;", out);
@@ -124,6 +123,11 @@ static int writefile(struct expandfile *file, FILE *out) {
 						break;
 					}
 				}
+				break;
+			case NOMINIFY_CHAR:
+				for (++i; data->data[i] != ESCAPE_CHAR &&
+						i < data->len; ++i)
+					fputc(data->data[i], out);
 				break;
 			}
 		}
@@ -161,7 +165,7 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 				if (appendchar(ret->data, ESCAPE_CHAR))
 					goto error;
 				break;
-			case VAR_CHAR: case AUTOESCAPE_CHAR:
+			case VAR_CHAR: case AUTOESCAPE_CHAR: case NOMINIFY_CHAR:
 				if (appendchar(ret->data, ESCAPE_CHAR))
 					goto error;
 				for (;;) {

@@ -7,7 +7,7 @@ Please not that ncdg minifies HTML so these examples aren't really correct.
 
 ## Usage
 
-There are only 3 features in ncdg:
+There are only 4 features in ncdg:
 
 ### Include statements
 
@@ -108,3 +108,19 @@ Result:
 </code></pre>
 
 Note that text inside of escaped sections are not minified.
+
+### Excluding minification
+
+```
+%&
+&
+%
+```
+
+Result:
+
+```
+&
+```
+
+Used for legacy web pages on my site that I don't want to update
