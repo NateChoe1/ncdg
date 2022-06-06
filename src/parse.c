@@ -283,10 +283,10 @@ static void mputc(struct minstate *state, char c, FILE *file) {
 	if (isspace(c))
 		state->isspace = 1;
 	else {
-		if (!state->ignore && state->isspace && c != '<' && c != '>')
+		if (!state->ignore && state->isspace && c != '>')
 			fputc(' ', file);
 		fputc(c, file);
-		state->ignore = c == '<' || c == '>';
+		state->ignore = c == '<';
 		state->isspace = 0;
 	}
 }
