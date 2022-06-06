@@ -9,8 +9,7 @@ struct string *newstring() {
 	if (ret == NULL)
 		goto error1;
 	ret->len = 0;
-	ret->alloc = 5;
-	/* TODO: Change this to a far reasonable number */
+	ret->alloc = 200;
 	ret->data = malloc(ret->alloc);
 	if (ret->data == NULL)
 		goto error2;

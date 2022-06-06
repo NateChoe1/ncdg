@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <string.h>
 
 #include <parse.h>
 #include <vector.h>
@@ -21,7 +22,6 @@ static int expandfile(struct expandfile *ret, char *filename, int level);
 static struct string *getstring(FILE *file, char end);
 
 int parsefile(char *template, FILE *out) {
-	int i;
 	struct expandfile *expanded;
 	expanded = malloc(sizeof *expanded);
 	if (expanded == NULL)
@@ -34,12 +34,55 @@ int parsefile(char *template, FILE *out) {
 		goto error3;
 	if (expandfile(expanded, template, 0))
 		goto error4;
-	fwrite(expanded->data->data, 1, expanded->data->len, out);
+	{
+		long i;
+		for (i = 0; i < expanded->data->len; ++i) {
+			if (expanded->data->data[i] == ESCAPE_CHAR) {
+				switch (expanded->data->data[++i]) {
+				case ESCAPE_CHAR:
+					fputc(ESCAPE_CHAR, out);
+					break;
+				case VAR_CHAR: {
+					long start;
+					int j;
+					struct string *data;
+					struct vector *vars;
+					char *varname;
+					data = expanded->data;
+					start = ++i;
+					while (data->data[i] != ESCAPE_CHAR &&
+							i < data->len)
+						++i;
+					data->data[i] = '\0';
+					varname = data->data + start;
+					vars = expanded->vars;
+					for (j = 0; j < vars->len; ++j) {
+						struct var var;
+						var = getvector(vars,
+								struct var, j);
+						if (strcmp(var.var->data,
+								varname) == 0) {
+							fputs(var.value->data,
+									out);
+						}
+					}
+				}
+				}
+			}
+			else
+				fputc(expanded->data->data[i], out);
+		}
+	}
 	return 0;
 error4:
-	for (i = 0; i < expanded->vars->len; ++i) {
-		freestring(getvector(expanded->vars, struct var, i).var);
-		freestring(getvector(expanded->vars, struct var, i).value);
+	{
+		int i;
+		for (i = 0; i < expanded->vars->len; ++i) {
+			struct var var;
+			var = getvector(expanded->vars, struct var, i);
+			freestring(var.var);
+			freestring(var.value);
+		}
 	}
 	freevector(expanded->vars);
 error3:
