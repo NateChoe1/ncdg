@@ -92,12 +92,29 @@ Result:
 </html>
 ```
 
+A variable expansion can go through multiple variables until one is found.
+
+file.html
+
+```
+@!var1,var2,var3@
+@=var2 value@
+```
+
+Result:
+
+```
+value
+```
+
+var1 doesn't exist, so ncdg moves on to var2, which does exist, and skips var3.
+
 ### Automatic escaping
 
 ```
-<pre><code>%\
+<pre><code>@\
 #include <stdio.h>
-%</code></pre>
+@</code></pre>
 ```
 
 Result:
@@ -112,15 +129,17 @@ Note that text inside of escaped sections are not minified.
 ### Excluding minification
 
 ```
-%&
+@&
 &
-%
+this text isn't minified
+@
 ```
 
 Result:
 
 ```
 &
+this text isn't minified
 ```
 
 Used for legacy web pages on my site that I don't want to update

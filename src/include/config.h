@@ -4,5 +4,6 @@
 #define SET_CHAR '='
 #define AUTOESCAPE_CHAR '\\'
 #define NOMINIFY_CHAR '&'
+#define SEPARATOR_CHAR ','
 
 #define MAX_INCLUDE_DEPTH 10

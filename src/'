@@ -32,8 +32,7 @@ static struct string *getstring(FILE *file, char end);
 static void initminstate(struct minstate *state);
 static void mputs(struct minstate *state, char *s, FILE *file);
 static void mputc(struct minstate *state, char c, FILE *file);
-static long putvar(long i, struct minstate *s, FILE *out,
-		const struct string *file, const struct vector *vars);
+static int putvar(int i, const struct string *file, const struct vector *vars);
 
 int parsefile(char *template, FILE *out) {
 	struct expandfile expanded;
@@ -82,11 +81,32 @@ static int writefile(struct expandfile *file, FILE *out) {
 			case ESCAPE_CHAR:
 				mputc(&s, ESCAPE_CHAR, out);
 				break;
-			case VAR_CHAR:
-				i = putvar(i, &s, out, data, vars);
+			case VAR_CHAR: {
+				i = putvar(i, data, vars);
 				if (i < 0)
-					return 1;
+					goto error;
+				long start;
+				int j;
+				char *varname;
+				start = ++i;
+				while (data->data[i] != ESCAPE_CHAR &&
+						i < data->len)
+					++i;
+				data->data[i] = '\0';
+				varname = data->data + start;
+				vars = file->vars;
+				for (j = 0; j < vars->len; ++j) {
+					struct var var;
+					var = getvector(vars,
+							struct var, j);
+					if (strcmp(var.var->data,
+							varname) == 0) {
+						mputs(&s, var.value->data,
+								out);
+					}
+				}
 				break;
+			}
 			case AUTOESCAPE_CHAR:
 				for (++i; i < data->len; ++i) {
 					switch (data->data[i]) {
@@ -274,36 +294,4 @@ static void mputc(struct minstate *state, char c, FILE *file) {
 		state->ignore = c == '<';
 		state->isspace = 0;
 	}
-}
-
-static long putvar(long i, struct minstate *s, FILE *out,
-		const struct string *file, const struct vector *vars) {
-	long start;
-	for (;;) {
-		int j;
-		start = ++i;
-		while (file->data[i] != SEPARATOR_CHAR &&
-		       file->data[i] != ESCAPE_CHAR &&
-		       i < file->len)
-			++i;
-		if (i >= file->len)
-			return -1;
-		for (j = 0; j < vars->len; ++j) {
-			const struct var var = getvector(vars, struct var, j);
-			if (var.var->len - 1 != i - start)
-				continue;
-			/* -1 because var.var->len includes the \0. */
-			if (memcmp(var.var->data, file->data + start,
-					i - start) == 0) {
-				mputs(s, var.value->data, out);
-				goto end;
-			}
-		}
-	}
-end:
-	while (file->data[i] != ESCAPE_CHAR && i < file->len)
-		++i;
-	if (i == file->len)
-		return -1;
-	return i;
 }
