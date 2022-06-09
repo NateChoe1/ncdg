@@ -113,18 +113,18 @@ var1 doesn't exist, so ncdg moves on to var2, which does exist, and skips var3.
 
 ```
 <pre><code>@\
-#include <stdio.h>
+#include  <stdio.h>
 @</code></pre>
 ```
 
 Result:
 
 ```
-<pre><code>
-#include &lt;stdio.h%gt;
+<pre><code>#include  &lt;stdio.h&gt;
 </code></pre>
 
-Note that text inside of escaped sections are not minified.
+Note that text inside of escaped sections is not minified. Also note taht the
+first character after the code is swallowed.
 
 ### Excluding minification
 

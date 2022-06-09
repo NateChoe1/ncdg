@@ -88,6 +88,8 @@ static int writefile(struct expandfile *file, FILE *out) {
 					return 1;
 				break;
 			case AUTOESCAPE_CHAR:
+				if (data->data[++i] != '\n')
+					--i;
 				for (++i; i < data->len; ++i) {
 					switch (data->data[i]) {
 					case '&':
@@ -114,6 +116,8 @@ static int writefile(struct expandfile *file, FILE *out) {
 autoescapeend:
 				break;
 			case NOMINIFY_CHAR:
+				if (data->data[++i] != '\n')
+					--i;
 				for (++i; data->data[i] != ESCAPE_CHAR &&
 						i < data->len; ++i) {
 					if (data->data[i] == ESCAPE_CHAR) {
