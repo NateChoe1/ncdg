@@ -1,3 +1,9 @@
+#include <config.h>
+
+#ifdef ALLOW_SHELL
+#define _POSIX_C_SOURCE 2
+#endif
+
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,8 +11,6 @@
 #include <parse.h>
 #include <vector.h>
 #include <strings.h>
-
-#include <config.h>
 
 struct var {
 	struct string *var;
@@ -128,6 +132,26 @@ autoescapeend:
 					fputc(data->data[i], out);
 				}
 				break;
+#ifdef ALLOW_SHELL
+			case SHELL_CHAR: {
+				FILE *process;
+				long start;
+				start = ++i;
+				while (data->data[i] != ESCAPE_CHAR)
+					++i;
+				data->data[i] = '\0';
+				process = popen(data->data + start, "r");
+				for (;;) {
+					int c;
+					c = fgetc(process);
+					if (c == EOF)
+						break;
+					mputc(&s, c, out);
+				}
+				pclose(process);
+				break;
+			}
+#endif
 			}
 		}
 		else
@@ -165,6 +189,7 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 					goto error;
 				break;
 			case VAR_CHAR: case AUTOESCAPE_CHAR: case NOMINIFY_CHAR:
+			case SHELL_CHAR:
 				if (appendchar(ret->data, ESCAPE_CHAR))
 					goto error;
 				for (;;) {
