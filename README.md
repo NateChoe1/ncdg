@@ -122,7 +122,7 @@ Result:
 ```
 <pre><code>#include  &lt;stdio.h&gt;
 </code></pre>
-``
+```
 
 Note that text inside of escaped sections is not minified. Also note that the
 first character after the code is swallowed.
