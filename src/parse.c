@@ -101,6 +101,7 @@ static int writefile(struct expandfile *file, FILE *out) {
 						break;
 					case ';':
 						fputs("&semi;", out);
+						break;
 					case '<':
 						fputs("&lt;", out);
 						break;
