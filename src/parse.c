@@ -206,9 +206,6 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 							if (appendchar(
 								ret->data, c))
 								goto error;
-							if (appendchar(
-								ret->data, c))
-								goto error;
 						}
 						else {
 							ungetc(c, file);
