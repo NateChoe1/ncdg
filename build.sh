@@ -1,3 +1,3 @@
 #!/bin/sh
 
-docker build . -t natechoe/ncdg
+docker buildx build . -t natechoe/ncdg
