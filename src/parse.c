@@ -123,8 +123,7 @@ autoescapeend:
 			case NOMINIFY_CHAR:
 				if (data->data[++i] != '\n')
 					--i;
-				for (++i; data->data[i] != ESCAPE_CHAR &&
-						i < data->len; ++i) {
+				for (++i; i < data->len; ++i) {
 					if (data->data[i] == ESCAPE_CHAR) {
 						if (data->data[i + 1] != ESCAPE_CHAR)
 							break;
