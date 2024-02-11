@@ -38,6 +38,7 @@ static void mputs(struct minstate *state, char *s, FILE *file);
 static void mputc(struct minstate *state, char c, FILE *file);
 static long putvar(long i, struct minstate *s, FILE *out,
 		const struct string *file, const struct vector *vars);
+static int defvars(struct expandfile *expanded, char *filename);
 
 int parsefile(char *template, FILE *out) {
 	struct expandfile expanded;
@@ -51,6 +52,10 @@ int parsefile(char *template, FILE *out) {
 	if (expanded.vars == NULL) {
 		ret = 1;
 		goto error2;
+	}
+	if (defvars(&expanded, template)) {
+		ret = 1;
+		goto error3;
 	}
 	if (expandfile(&expanded, template, 0)) {
 		ret = 1;
@@ -325,6 +330,8 @@ static long putvar(long i, struct minstate *s, FILE *out,
 				goto end;
 			}
 		}
+		if (file->data[i] != SEPARATOR_CHAR)
+			goto end;
 	}
 end:
 	while (file->data[i] != ESCAPE_CHAR && i < file->len)
@@ -332,4 +339,24 @@ end:
 	if (i == file->len)
 		return -1;
 	return i;
+}
+
+static int defvars(struct expandfile *expanded, char *filename) {
+	struct var scratch;
+	if ((scratch.var = charp2s("_filename")) == NULL) {
+		goto error1;
+	}
+	if ((scratch.value = charp2s(filename)) == NULL) {
+		goto error2;
+	}
+	if (addvector(expanded->vars, &scratch)) {
+		goto error3;
+	}
+	return 0;
+error3:
+	freestring(scratch.value);
+error2:
+	freestring(scratch.var);
+error1:
+	return 1;
 }

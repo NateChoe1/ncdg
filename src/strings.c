@@ -3,7 +3,7 @@
 
 #include <strings.h>
 
-struct string *newstring() {
+struct string *newstring(void) {
 	struct string *ret;
 	ret = malloc(sizeof *ret);
 	if (ret == NULL)
@@ -16,6 +16,27 @@ struct string *newstring() {
 	return ret;
 error2:
 	free(ret);
+error1:
+	return NULL;
+}
+
+struct string *charp2s(char *s) {
+	struct string *ret;
+	long i;
+	if ((ret = newstring()) == NULL) {
+		goto error1;
+	}
+	for (i = 0; s[i] != '\0'; ++i) {
+		if (appendchar(ret, s[i])) {
+			goto error2;
+		}
+	}
+	if (appendchar(ret, '\0')) {
+		goto error2;
+	}
+	return ret;
+error2:
+	freestring(ret);
 error1:
 	return NULL;
 }

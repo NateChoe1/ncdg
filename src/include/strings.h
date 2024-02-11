@@ -9,7 +9,8 @@ struct string {
 	char *data;
 };
 
-struct string *newstring();
+struct string *newstring(void);
+struct string *charp2s(char *s);
 int appendchar(struct string *string, char c);
 void freestring(struct string *string);
 void resetstring(struct string *string);
