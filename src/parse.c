@@ -157,6 +157,9 @@ autoescapeend:
 				break;
 			}
 #endif
+			default:
+				fprintf(stderr, "Error in expansion phase: Unknown escape %c%c\n", ESCAPE_CHAR, data->data[i]);
+				return 1;
 			}
 		}
 		else

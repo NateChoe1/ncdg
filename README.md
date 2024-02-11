@@ -158,3 +158,32 @@ this text isn't minified
 ```
 
 Used for legacy web pages on my site that I don't want to update
+
+### Nesting
+
+```
+@=var Hello world!@
+@n @@$ echo '@!var@' | rev @@ @m
+```
+
+Turns into
+
+```
+@$ echo 'Hello world!' | rev @
+```
+
+Turns into
+
+```
+!dlrow olleH
+```
+
+Things between an `@n` and `@m` tag get processed twice. A double escape char `@@`
+gets escaped into a single escape char `@`. Defining variables in a nest is
+illegal, so
+
+```
+@n @@= dynamic_variable @$./generate_variable_value.sh@ @@ @m
+```
+
+is illegal
