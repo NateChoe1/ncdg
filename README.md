@@ -109,6 +109,20 @@ value
 
 var1 doesn't exist, so ncdg moves on to var2, which does exist, and skips var3.
 
+Certain variable names have default variables
+
+hello\_world.html
+
+```
+@!_filename@
+```
+
+Result:
+
+```
+hello_world.html
+```
+
 ### Automatic escaping
 
 ```
