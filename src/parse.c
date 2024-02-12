@@ -11,6 +11,7 @@
 #include <parse.h>
 #include <vector.h>
 #include <strings.h>
+#include <ncdgfile.h>
 
 struct var {
 	struct string *var;
@@ -31,38 +32,43 @@ struct minstate {
 };
 
 static int expandfile(struct expandfile *ret, char *filename, int level);
-static int writefile(struct expandfile *file, FILE *out);
+static int writefile(struct expandfile *file, struct ncdgfile *out);
 static struct string *getstring(FILE *file, char end);
 static void initminstate(struct minstate *state);
-static void mputs(struct minstate *state, char *s, FILE *file);
-static void mputc(struct minstate *state, char c, FILE *file);
-static long putvar(long i, struct minstate *s, FILE *out,
+static void mputs(struct minstate *state, char *s, struct ncdgfile *file);
+static void mputc(struct minstate *state, char c, struct ncdgfile *file);
+static long putvar(long i, struct minstate *s, struct ncdgfile *out,
 		const struct string *file, const struct vector *vars);
 static int defvars(struct expandfile *expanded, char *filename);
 
 int parsefile(char *template, FILE *out) {
 	struct expandfile expanded;
 	int ret;
+	struct ncdgfile *ncdgout;
+	if ((ncdgout = file2ncdg(out)) == NULL) {
+		ret = 1;
+		goto error1;
+	}
 	expanded.data = newstring();
 	if (expanded.data == NULL) {
 		ret = 1;
-		goto error1;
+		goto error2;
 	}
 	expanded.vars = newvector(struct var);
 	if (expanded.vars == NULL) {
 		ret = 1;
-		goto error2;
+		goto error3;
 	}
 	if (defvars(&expanded, template)) {
 		ret = 1;
-		goto error3;
+		goto error4;
 	}
 	if (expandfile(&expanded, template, 0)) {
 		ret = 1;
-		goto error3;
+		goto error4;
 	}
-	ret = writefile(&expanded, out);
-error3:
+	ret = writefile(&expanded, ncdgout);
+error4:
 	{
 		int i;
 		for (i = 0; i < expanded.vars->len; ++i) {
@@ -73,13 +79,15 @@ error3:
 		}
 	}
 	freevector(expanded.vars);
-error2:
+error3:
 	freestring(expanded.data);
+error2:
+	ncdgout->free(ncdgout);
 error1:
 	return ret;
 }
 
-static int writefile(struct expandfile *file, FILE *out) {
+static int writefile(struct expandfile *file, struct ncdgfile *out) {
 	long i;
 	struct minstate s;
 	initminstate(&s);
@@ -102,16 +110,16 @@ static int writefile(struct expandfile *file, FILE *out) {
 				for (++i; i < data->len; ++i) {
 					switch (data->data[i]) {
 					case '&':
-						fputs("&amp;", out);
+						out->puts(out, "&amp;");
 						break;
 					case ';':
-						fputs("&semi;", out);
+						out->puts(out, "&semi;");
 						break;
 					case '<':
-						fputs("&lt;", out);
+						out->puts(out, "&lt;");
 						break;
 					case '>':
-						fputs("&gt;", out);
+						out->puts(out, "&gt;");
 						break;
 					case ESCAPE_CHAR:
 						if (data->data[i + 1] != ESCAPE_CHAR)
@@ -119,7 +127,7 @@ static int writefile(struct expandfile *file, FILE *out) {
 						++i;
 						/* fallthrough */
 					default:
-						fputc(data->data[i], out);
+						out->putc(out, data->data[i]);
 						break;
 					}
 				}
@@ -134,7 +142,7 @@ autoescapeend:
 							break;
 						++i;
 					}
-					fputc(data->data[i], out);
+					out->putc(out, data->data[i]);
 				}
 				break;
 #ifdef ALLOW_SHELL
@@ -201,7 +209,9 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 					goto error;
 				break;
 			case VAR_CHAR: case AUTOESCAPE_CHAR: case NOMINIFY_CHAR:
-			case SHELL_CHAR:
+			case SHELL_CHAR: case NEST_START: {
+				int origchar = c;
+				int origline = linenum;
 				if (appendchar(ret->data, ESCAPE_CHAR))
 					goto error;
 				for (;;) {
@@ -225,7 +235,14 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 					}
 					c = fgetc(file);
 				}
+				if (origchar == NEST_START) {
+					if (fgetc(file) != NEST_END) {
+						fprintf(stderr, "Line %d: Unmatched nest char\n", origline);
+						goto error;
+					}
+				}
 				break;
+			}
 			case SET_CHAR: {
 				struct var var;
 				var.var = getstring(file, ' ');
@@ -244,6 +261,9 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 				freestring(inclname);
 				break;
 			}
+			case NEST_END:
+				fprintf(stderr, "Line %d: Unmatched nest end\n", linenum);
+				goto error;
 			default:
 				fprintf(stderr, "Line %d: Invalid escape %c\n",
 						linenum, c);
@@ -296,25 +316,25 @@ static void initminstate(struct minstate *state) {
 	memset(state, 0, sizeof *state);
 }
 
-static void mputs(struct minstate *state, char *s, FILE *file) {
+static void mputs(struct minstate *state, char *s, struct ncdgfile *file) {
 	int i;
 	for (i = 0; s[i] != '\0'; ++i)
 		mputc(state, s[i], file);
 }
 
-static void mputc(struct minstate *state, char c, FILE *file) {
+static void mputc(struct minstate *state, char c, struct ncdgfile *file) {
 	if (isspace(c))
 		state->isspace = 1;
 	else {
 		if (!state->ignore && state->isspace && c != '>')
-			fputc(' ', file);
-		fputc(c, file);
+			file->putc(file, ' ');
+		file->putc(file, c);
 		state->ignore = c == '<';
 		state->isspace = 0;
 	}
 }
 
-static long putvar(long i, struct minstate *s, FILE *out,
+static long putvar(long i, struct minstate *s, struct ncdgfile *out,
 		const struct string *file, const struct vector *vars) {
 	long start;
 	for (;;) {

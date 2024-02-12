@@ -51,7 +51,6 @@ static int fileputs(struct ncdgfile *file, char *s) {
 }
 
 static void filefree(struct ncdgfile *file) {
-	fclose((FILE *) file->handle);
 	free(file);
 }
 
