@@ -42,7 +42,7 @@ error1:
 }
 
 int appendchar(struct string *string, char c) {
-	if (string->len >= string->alloc) {
+	if (string->len+1 >= string->alloc) {
 		char *newdata;
 		size_t newalloc;
 		newalloc = string->alloc * 2;
@@ -53,6 +53,7 @@ int appendchar(struct string *string, char c) {
 		string->alloc = newalloc;
 	}
 	string->data[string->len++] = c;
+	string->data[string->len] = 0;
 	return 0;
 }
 

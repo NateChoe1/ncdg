@@ -165,12 +165,65 @@ autoescapeend:
 				break;
 			}
 #endif
-			case NEST_START:
+			case NEST_START: {
+				struct ncdgfile *tmp;
+				struct string *buff;
+				struct expandfile nest;
+				if ((buff = newstring()) == NULL) {
+					goto bufferror;
+				}
+
+				/* read nest data into a string */
+				while (i < data->len) {
+					int c;
+					if (data->data[i++] != ESCAPE_CHAR) {
+						appendchar(buff, data->data[i]);
+						continue;
+					}
+					if (i >= data->len) {
+						break;
+					}
+					c = data->data[i++];
+					if (c == NEST_END) {
+						goto got_nest;
+					}
+					appendchar(buff, ESCAPE_CHAR);
+					appendchar(buff, c);
+				}
+				fputs("Unexpected EOF in nest\n", stderr);
+				return 1;
+got_nest:
+				if ((tmp = stringfile()) == NULL) {
+					goto bufferror;
+				}
+
+				/* first pass */
+				nest.data = buff;
+				nest.vars = file->vars;
+				if (writefile(&nest, tmp)) {
+					return 1;
+				}
+				freestring(buff);
+
+				/* second pass */
+				nest.data = (struct string *) tmp->handle;
+				if (writefile(&nest, out)) {
+					return 1;
+				}
+				tmp->free(tmp);
+
 				return 0;
+bufferror:
+				fputs("Failed to create temporary buffer while nesting\n", stderr);
+				return 1;
+			}
 			case NEST_END:
-				return 0;
+				fputs("Error in expansion phase: Unmatched nest end char\n", stderr);
+				return 1;
 			default:
-				fprintf(stderr, "Error in expansion phase: Unknown escape %c%c\n", ESCAPE_CHAR, data->data[i]);
+				fprintf(stderr, "Error in expansion phase: Unknown escape '%c' (0x%x)\n",
+						data->data[i], data->data[i]);
+				puts(data->data);
 				return 1;
 			}
 		}
@@ -209,9 +262,7 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 					goto error;
 				break;
 			case VAR_CHAR: case AUTOESCAPE_CHAR: case NOMINIFY_CHAR:
-			case SHELL_CHAR: case NEST_START: {
-				int origchar = c;
-				int origline = linenum;
+			case SHELL_CHAR:
 				if (appendchar(ret->data, ESCAPE_CHAR))
 					goto error;
 				for (;;) {
@@ -235,14 +286,7 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 					}
 					c = fgetc(file);
 				}
-				if (origchar == NEST_START) {
-					if (fgetc(file) != NEST_END) {
-						fprintf(stderr, "Line %d: Unmatched nest char\n", origline);
-						goto error;
-					}
-				}
 				break;
-			}
 			case SET_CHAR: {
 				struct var var;
 				var.var = getstring(file, ' ');
@@ -260,6 +304,35 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 					return 1;
 				freestring(inclname);
 				break;
+			}
+			case NEST_START: {
+				int origline = linenum;
+				appendchar(ret->data, ESCAPE_CHAR);
+				appendchar(ret->data, NEST_START);
+				for (;;) {
+					c = fgetc(file);
+					if (c == EOF) {
+						goto no_nest_end;
+					}
+					if (c != ESCAPE_CHAR) {
+						appendchar(ret->data, c);
+						continue;
+					}
+					c = fgetc(file);
+					if (c == EOF) {
+						goto no_nest_end;
+					}
+					appendchar(ret->data, ESCAPE_CHAR);
+					appendchar(ret->data, c);
+					if (c != NEST_END) {
+						continue;
+					}
+					break;
+				}
+				break;
+no_nest_end:
+				fprintf(stderr, "Line %d: Unmatched nest start char\n", origline);
+				goto error;
 			}
 			case NEST_END:
 				fprintf(stderr, "Line %d: Unmatched nest end\n", linenum);
