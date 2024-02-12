@@ -176,6 +176,8 @@ autoescapeend:
 
 				in_escape = 0;
 
+				++i;
+
 				/* read nest data into a string */
 				while (i < data->len) {
 					int c;
@@ -207,6 +209,7 @@ autoescapeend:
 				fputs("Unexpected EOF in nest\n", stderr);
 				return 1;
 got_nest:
+				--i;
 				if ((tmp = stringfile()) == NULL) {
 					goto bufferror;
 				}
@@ -226,7 +229,7 @@ got_nest:
 				}
 				tmp->free(tmp);
 
-				return 0;
+				break;
 bufferror:
 				fputs("Failed to create temporary buffer while nesting\n", stderr);
 				return 1;
