@@ -157,6 +157,10 @@ autoescapeend:
 				break;
 			}
 #endif
+			case NEST_START:
+				return 0;
+			case NEST_END:
+				return 0;
 			default:
 				fprintf(stderr, "Error in expansion phase: Unknown escape %c%c\n", ESCAPE_CHAR, data->data[i]);
 				return 1;

@@ -6,6 +6,8 @@
 #define NOMINIFY_CHAR '&'
 #define SEPARATOR_CHAR ','
 #define SHELL_CHAR '$'
+#define NEST_START 'n'
+#define NEST_END 'm'
 
 #define ALLOW_SHELL
 

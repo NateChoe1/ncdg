@@ -178,9 +178,8 @@ Turns into
 !dlrow olleH
 ```
 
-Things between an `@n` and `@m` tag get processed twice. A double escape char `@@`
-gets escaped into a single escape char `@`. Defining variables in a nest is
-illegal, so
+Things between an `@n` and `@m` tag get processed twice. Defining variables in a
+nest is illegal, so
 
 ```
 @n @@= dynamic_variable @$./generate_variable_value.sh@ @@ @m
