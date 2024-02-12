@@ -169,26 +169,40 @@ autoescapeend:
 				struct ncdgfile *tmp;
 				struct string *buff;
 				struct expandfile nest;
+				int in_escape;
 				if ((buff = newstring()) == NULL) {
 					goto bufferror;
 				}
 
+				in_escape = 0;
+
 				/* read nest data into a string */
 				while (i < data->len) {
 					int c;
-					if (data->data[i++] != ESCAPE_CHAR) {
-						appendchar(buff, data->data[i]);
+					c  = data->data[i++];
+					if (c != ESCAPE_CHAR) {
+						appendchar(buff, c);
+						continue;
+					}
+					if (in_escape) {
+						appendchar(buff, c);
+						in_escape = 0;
 						continue;
 					}
 					if (i >= data->len) {
 						break;
 					}
 					c = data->data[i++];
-					if (c == NEST_END) {
+					switch (c) {
+					case NEST_END:
 						goto got_nest;
+					default:
+						in_escape = 1;
+					case ESCAPE_CHAR:
+						appendchar(buff, ESCAPE_CHAR);
+						appendchar(buff, c);
+						break;
 					}
-					appendchar(buff, ESCAPE_CHAR);
-					appendchar(buff, c);
 				}
 				fputs("Unexpected EOF in nest\n", stderr);
 				return 1;
@@ -223,7 +237,6 @@ bufferror:
 			default:
 				fprintf(stderr, "Error in expansion phase: Unknown escape '%c' (0x%x)\n",
 						data->data[i], data->data[i]);
-				puts(data->data);
 				return 1;
 			}
 		}
