@@ -40,6 +40,7 @@ static void mputc(struct minstate *state, char c, struct ncdgfile *file);
 static long putvar(long i, struct minstate *s, struct ncdgfile *out,
 		const struct string *file, const struct vector *vars);
 static int defvars(struct expandfile *expanded, char *filename);
+static long count_escapes(struct string *string);
 
 int parsefile(char *template, FILE *out) {
 	struct expandfile expanded;
@@ -90,6 +91,10 @@ error1:
 static int writefile(struct expandfile *file, struct ncdgfile *out) {
 	long i;
 	struct minstate s;
+	if (count_escapes(file->data) % 2 != 0) {
+		fputs("File or nest has an odd number of escape chars\n", stderr);
+		return 1;
+	}
 	initminstate(&s);
 	for (i = 0; i < file->data->len; ++i) {
 		if (file->data->data[i] == ESCAPE_CHAR) {
@@ -476,4 +481,15 @@ error2:
 	freestring(scratch.var);
 error1:
 	return 1;
+}
+
+static long count_escapes(struct string *string) {
+	long i, ret;
+	ret = 0;
+	for (i = 0; i < string->len; ++i) {
+		if (string->data[i] == ESCAPE_CHAR) {
+			++ret;
+		}
+	}
+	return ret;
 }
