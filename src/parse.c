@@ -181,7 +181,7 @@ autoescapeend:
 				/* read nest data into a string */
 				while (i < data->len) {
 					int c;
-					c  = data->data[i++];
+					c = data->data[i++];
 					if (c != ESCAPE_CHAR) {
 						appendchar(buff, c);
 						continue;
@@ -334,16 +334,17 @@ static int expandfile(struct expandfile *ret, char *filename, int level) {
 						appendchar(ret->data, c);
 						continue;
 					}
-					c = fgetc(file);
-					if (c == EOF) {
-						goto no_nest_end;
-					}
-					appendchar(ret->data, ESCAPE_CHAR);
 					appendchar(ret->data, c);
-					if (c != NEST_END) {
-						continue;
+					c = fgetc(file);
+					if (c == NEST_END) {
+						appendchar(ret->data, c);
+						break;
 					}
-					break;
+					ungetc(c, file);
+					do {
+						c = fgetc(file);
+						appendchar(ret->data, c);
+					} while (c != ESCAPE_CHAR);
 				}
 				break;
 no_nest_end:
