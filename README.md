@@ -178,11 +178,17 @@ Turns into
 !dlrow olleH
 ```
 
-Things between an `@n` and `@m` tag get processed twice. Defining variables in a
-nest is illegal, so
+Things between an `@n` and `@m` tag get processed twice. You aren't allowed to
+define variables or include files inside of a nest, so
 
 ```
 @n @@= dynamic_variable @$./generate_variable_value.sh@ @@ @m
 ```
 
-is illegal
+and
+
+```
+@n @@% @$./get-file.sh@ @@ @m
+```
+
+are illegal
