@@ -159,6 +159,18 @@ this text isn't minified
 
 Used for legacy web pages on my site that I don't want to update
 
+### Shell scripting
+
+```
+@$ echo 'hello world!' @
+```
+
+Result:
+
+```
+hello world!
+```
+
 ### Nesting
 
 ```
